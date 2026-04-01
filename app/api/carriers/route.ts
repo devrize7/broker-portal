@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     since.setDate(since.getDate() - weeks * 7);
 
     const excluded = EXCLUDED.map(() => "?").join(",");
+    // Columns: [0]=loadNumber [1]=origin [2]=destination [3]=carrier [4]=salesRep [5]=revenue [6]=carrierCost [7]=pickupDate [8]=status
     const result = await db.execute({
       sql: `SELECT loadNumber, origin, destination, carrier, salesRep, revenue, carrierCost, pickupDate, status
             FROM Load WHERE pickupDate >= ? AND status NOT IN (${excluded}) ORDER BY pickupDate DESC`,
@@ -22,40 +23,17 @@ export async function GET(req: NextRequest) {
     });
 
     const lanes = result.rows.map((r) => {
-      const origin = r[2] as string;
-      const destination = r[3] as string;
-      const originCoords = cityToCoords(origin);
-      const destCoords = cityToCoords(destination);
-      if (!originCoords || !destCoords) return null;
+      const origin = r[1] as string;
+      const destination = r[2] as string;
+      const carrier = (r[3] as string) || "Unknown";
+      const salesRep = r[4] as string | null;
       const revenue = r[5] as number;
       const carrierCost = r[6] as number;
-      return {
-        loadNumber: r[0] as string,
-        origin,
-        destination,
-        carrier: (r[3] as string) || "Unknown",
-        salesRep: r[4] as string | null,
-        originCoords,
-        destCoords,
-        revenue,
-        carrierCost,
-        margin: revenue - carrierCost,
-        pickupDate: r[7] as string,
-        status: r[8] as string,
-      };
-    }).filter(Boolean);
 
-    // Re-map correctly: origin=col2, destination=col3, carrier=col4
-    const lanesFixed = result.rows.map((r) => {
-      const origin = r[2] as string;
-      const destination = r[3] as string;
-      const carrier = (r[4] as string) || "Unknown";
-      const salesRep = r[5] as string | null;
-      const revenue = r[6] as number;
-      const carrierCost = r[7] as number;
       const originCoords = cityToCoords(origin);
       const destCoords = cityToCoords(destination);
       if (!originCoords || !destCoords) return null;
+
       return {
         loadNumber: r[0] as string,
         origin,
@@ -67,13 +45,13 @@ export async function GET(req: NextRequest) {
         revenue,
         carrierCost,
         margin: revenue - carrierCost,
-        pickupDate: r[8] as string,
-        status: r[9] as string,
+        pickupDate: r[7] as string,
+        status: r[8] as string,
       };
     }).filter(Boolean);
 
     const carrierMap: Record<string, { loads: number; totalCost: number; states: Set<string> }> = {};
-    for (const l of lanesFixed) {
+    for (const l of lanes) {
       if (!l) continue;
       if (!carrierMap[l.carrier]) carrierMap[l.carrier] = { loads: 0, totalCost: 0, states: new Set() };
       carrierMap[l.carrier].loads += 1;
@@ -88,7 +66,7 @@ export async function GET(req: NextRequest) {
       name, loads: d.loads, avgCost: d.loads > 0 ? d.totalCost / d.loads : 0, states: Array.from(d.states).sort(),
     })).sort((a, b) => b.loads - a.loads);
 
-    return NextResponse.json({ lanes: lanesFixed, carriers, total: lanesFixed.length });
+    return NextResponse.json({ lanes, carriers, total: lanes.length });
   } catch (err) {
     console.error("Carriers error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
