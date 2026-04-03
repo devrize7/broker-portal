@@ -188,7 +188,7 @@ export default function LeaderboardPage() {
                       {/* Rank */}
                       <td className="py-4 pr-4">
                         {i < 3
-                          ? <span className="text-xl">{MEDALS[i]}</span>
+                          ? <span className="text-3xl">{MEDALS[i]}</span>
                           : <span className="text-slate-600 text-sm font-mono">{i + 1}</span>
                         }
                       </td>
