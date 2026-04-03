@@ -264,11 +264,7 @@ export default function LeaderboardPage() {
                           <div className="min-w-[180px]">
                             <div className="flex justify-between items-baseline mb-1.5">
                               <span className="text-xs text-slate-400 tabular-nums font-medium">{fmt(b.current.margin)}</span>
-                              <span className={`text-sm font-bold tabular-nums ${
-                                (b.goalPct ?? 0) >= 100 ? "text-emerald-400"
-                                  : (b.goalPct ?? 0) >= 70 ? "text-yellow-400"
-                                  : "text-red-400"
-                              }`}>
+                              <span className="text-sm font-bold tabular-nums text-white">
                                 {b.goalPct !== null ? `${Math.round(b.goalPct)}%` : ""}
                               </span>
                             </div>
