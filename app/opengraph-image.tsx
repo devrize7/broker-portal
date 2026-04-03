@@ -1,11 +1,16 @@
 import { ImageResponse } from "next/og";
+import { readFile } from "fs/promises";
+import { join } from "path";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 export const alt = "Oath Logistics · Broker Portal";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export default function Image() {
+export default async function Image() {
+  const logoData = await readFile(join(process.cwd(), "public/oath-logo-white.png"));
+  const logoBase64 = `data:image/png;base64,${logoData.toString("base64")}`;
+
   return new ImageResponse(
     (
       <div
@@ -17,38 +22,18 @@ export default function Image() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          gap: "32px",
           fontFamily: "sans-serif",
         }}
       >
-        {/* Gold O ring */}
-        <div
-          style={{
-            width: 120,
-            height: 120,
-            borderRadius: "50%",
-            border: "18px solid #f59e0b",
-            marginBottom: 44,
-            boxShadow: "0 0 60px rgba(245,158,11,0.45)",
-          }}
-        />
-        {/* Title */}
-        <div
-          style={{
-            color: "white",
-            fontSize: 80,
-            fontWeight: 800,
-            letterSpacing: "-3px",
-            lineHeight: 1,
-          }}
-        >
-          Oath Logistics
-        </div>
+        {/* Actual Oath logo */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logoBase64} alt="Oath Logistics" width={480} height={187} />
         {/* Subtitle */}
         <div
           style={{
             color: "#475569",
-            fontSize: 28,
-            marginTop: 20,
+            fontSize: 26,
             letterSpacing: "10px",
             textTransform: "uppercase",
           }}
