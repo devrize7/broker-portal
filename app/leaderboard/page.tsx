@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 interface BrokerRow {
   broker: string;
@@ -54,9 +55,8 @@ function DeltaBadge({ delta }: { delta: number | null }) {
   if (delta === null) return <span className="text-slate-600 text-sm">—</span>;
   const pos = delta >= 0;
   return (
-    <span className={`text-sm font-semibold tabular-nums flex items-center gap-0.5 ${pos ? "text-emerald-400" : "text-red-400"}`}>
-      {pos ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-      {pos ? "+" : ""}{fmt(delta, 0)}
+    <span className={`text-sm font-semibold tabular-nums ${pos ? "text-emerald-400" : "text-red-400"}`}>
+      {pos ? "▲" : "▼"} {pos ? "+" : ""}{fmt(delta, 0)}
     </span>
   );
 }
@@ -99,6 +99,14 @@ export default function LeaderboardPage() {
       {/* Header */}
       <header className="flex items-center justify-between px-8 py-5 border-b border-white/[0.08] bg-[#0a0e17]">
         <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 transition-colors text-sm"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Back</span>
+          </Link>
+          <div className="w-px h-6 bg-white/10" />
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Oath Logistics</h1>
             <p className="text-slate-500 text-xs mt-0.5 uppercase tracking-widest">Weekly Leaderboard</p>
@@ -161,7 +169,7 @@ export default function LeaderboardPage() {
                   <th className="text-right py-3 px-3">Avg / Load</th>
                   <th className="text-right py-3 px-3 border-l border-white/[0.06]">4-Wk Avg</th>
                   <th className="text-right py-3 pl-3">vs Avg</th>
-                  <th className="text-left py-3 pl-4 w-32">Goal Progress</th>
+                  <th className="text-left py-3 pl-6 min-w-[220px]">Goal Progress</th>
                 </tr>
               </thead>
               <tbody>
@@ -251,21 +259,27 @@ export default function LeaderboardPage() {
                       </td>
 
                       {/* Goal progress */}
-                      <td className="py-4 pl-4">
+                      <td className="py-4 pl-6">
                         {b.weeklyGoal > 0 ? (
-                          <div className="w-28">
-                            <div className="flex justify-between mb-1">
-                              <span className="text-[10px] text-slate-600">{fmt(b.current.margin)}</span>
-                              <span className="text-[10px] text-slate-600">{fmt(b.weeklyGoal)}</span>
+                          <div className="min-w-[180px]">
+                            <div className="flex justify-between items-baseline mb-1.5">
+                              <span className="text-xs text-slate-400 tabular-nums font-medium">{fmt(b.current.margin)}</span>
+                              <span className={`text-sm font-bold tabular-nums ${
+                                (b.goalPct ?? 0) >= 100 ? "text-emerald-400"
+                                  : (b.goalPct ?? 0) >= 70 ? "text-yellow-400"
+                                  : "text-red-400"
+                              }`}>
+                                {b.goalPct !== null ? `${Math.round(b.goalPct)}%` : ""}
+                              </span>
                             </div>
-                            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-3 bg-white/[0.08] rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full transition-all duration-700 ${goalColor}`}
                                 style={{ width: `${goalBarWidth}%` }}
                               />
                             </div>
-                            <p className="text-[10px] text-slate-500 mt-1 text-right">
-                              {b.goalPct !== null ? `${Math.round(b.goalPct)}% of goal` : ""}
+                            <p className="text-xs text-slate-600 mt-1.5 text-right">
+                              goal: {fmt(b.weeklyGoal)}
                             </p>
                           </div>
                         ) : (
