@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft, Search, ChevronUp, ChevronDown } from "lucide-react";
@@ -191,32 +191,23 @@ export default function LeaderboardPage() {
             </div>
           )}
 
-          {/* Sign in/out */}
-          {session ? (
-            <div className="hidden sm:flex items-center gap-2">
-              {(myBrokerName || isAdmin) && (
-                <Link
-                  href={`/broker/${encodeURIComponent(myBrokerName ?? "")}`}
-                  className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
-                >
-                  {isAdmin && !myBrokerName ? "Admin" : myBrokerName}
-                </Link>
-              )}
-              <button
-                onClick={() => signOut({ callbackUrl: "/leaderboard" })}
-                className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+          {/* My Stats + Sign out */}
+          <div className="flex items-center gap-3">
+            {myBrokerName && (
+              <Link
+                href={`/broker/${encodeURIComponent(myBrokerName)}`}
+                className="text-sm font-semibold px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
               >
-                Sign out
-              </button>
-            </div>
-          ) : (
+                My Stats
+              </Link>
+            )}
             <button
-              onClick={() => signIn("microsoft-entra-id", { callbackUrl: "/leaderboard" })}
-              className="text-xs text-slate-400 hover:text-white border border-white/10 hover:border-white/20 px-3 py-1.5 rounded-lg transition-colors"
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
             >
-              Sign in
+              Sign out
             </button>
-          )}
+          </div>
 
           {/* Date + refresh */}
           <div className="text-right">
@@ -325,18 +316,9 @@ export default function LeaderboardPage() {
                         </td>
                         <td className="py-4 pr-4">
                           <div className="flex items-center gap-2 flex-wrap">
-                            {isAdmin || myBrokerName === b.broker ? (
-                              <Link
-                                href={`/broker/${encodeURIComponent(b.broker)}`}
-                                className={`font-bold whitespace-nowrap hover:text-emerald-400 transition-colors ${isTop3 ? "text-xl text-white" : "text-lg text-slate-200"}`}
-                              >
-                                {b.broker}
-                              </Link>
-                            ) : (
-                              <span className={`font-bold whitespace-nowrap ${isTop3 ? "text-xl text-white" : "text-lg text-slate-200"}`}>
-                                {b.broker}
-                              </span>
-                            )}
+                            <span className={`font-bold whitespace-nowrap ${isTop3 ? "text-xl text-white" : "text-lg text-slate-200"}`}>
+                              {b.broker}
+                            </span>
                             <PaceChip status={b.paceStatus} />
                           </div>
                         </td>
@@ -440,16 +422,7 @@ export default function LeaderboardPage() {
                           ? <span className="text-2xl">{MEDALS[i]}</span>
                           : <span className="text-slate-600 text-sm font-mono w-5">{i + 1}</span>
                         }
-                        {isAdmin || myBrokerName === b.broker ? (
-                          <Link
-                            href={`/broker/${encodeURIComponent(b.broker)}`}
-                            className="font-bold text-white text-base hover:text-emerald-400 transition-colors"
-                          >
-                            {b.broker}
-                          </Link>
-                        ) : (
-                          <span className="font-bold text-white text-base">{b.broker}</span>
-                        )}
+                        <span className="font-bold text-white text-base">{b.broker}</span>
                         <PaceChip status={b.paceStatus} />
                       </div>
                     </div>
@@ -511,25 +484,12 @@ export default function LeaderboardPage() {
                 <p className="text-xs text-slate-700 uppercase tracking-widest mb-3">No loads yet this week</p>
                 <div className="flex flex-wrap gap-3">
                   {idleRows.map((b) => (
-                    isAdmin || myBrokerName === b.broker ? (
-                      <Link
-                        key={b.broker}
-                        href={`/broker/${encodeURIComponent(b.broker)}`}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] hover:border-white/10 hover:bg-white/[0.04] transition-colors"
-                      >
-                        <span className="text-sm text-slate-600 font-medium">{b.broker}</span>
-                        {b.weeklyGoal > 0 && (
-                          <span className="text-xs text-slate-700">Goal: {fmt(b.weeklyGoal)}</span>
-                        )}
-                      </Link>
-                    ) : (
-                      <div key={b.broker} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05]">
-                        <span className="text-sm text-slate-600 font-medium">{b.broker}</span>
-                        {b.weeklyGoal > 0 && (
-                          <span className="text-xs text-slate-700">Goal: {fmt(b.weeklyGoal)}</span>
-                        )}
-                      </div>
-                    )
+                    <div key={b.broker} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05]">
+                      <span className="text-sm text-slate-600 font-medium">{b.broker}</span>
+                      {b.weeklyGoal > 0 && (
+                        <span className="text-xs text-slate-700">Goal: {fmt(b.weeklyGoal)}</span>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

@@ -3,17 +3,24 @@ import { NextResponse } from "next/server";
 
 export const proxy = auth((req) => {
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith("/broker")) {
-    if (!req.auth) {
-      const signInUrl = new URL("/login", req.url);
-      signInUrl.searchParams.set("callbackUrl", req.url);
-      return NextResponse.redirect(signInUrl);
-    }
-    // Admins can access any broker's drill-down
+
+  // Always allow login and auth API routes
+  if (pathname.startsWith("/api/auth") || pathname === "/login") {
+    return NextResponse.next();
+  }
+
+  // Require sign-in for everything else
+  if (!req.auth) {
+    const signInUrl = new URL("/login", req.url);
+    signInUrl.searchParams.set("callbackUrl", req.url);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  // Brokers can only access their own drill-down page
+  if (pathname.startsWith("/broker/")) {
     const user = req.auth.user as { brokerName?: string | null; isAdmin?: boolean };
     if (user.isAdmin) return NextResponse.next();
 
-    // Brokers can only access their own drill-down
     const brokerName = user.brokerName;
     const requestedName = decodeURIComponent(pathname.split("/broker/")[1] ?? "");
     if (brokerName && requestedName && brokerName !== requestedName) {
@@ -22,9 +29,10 @@ export const proxy = auth((req) => {
       );
     }
   }
+
   return NextResponse.next();
 });
 
 export const config = {
-  matcher: ["/broker/:path*"],
+  matcher: ["/((?!_next/static|_next/image|.*\\.png$|.*\\.ico$).*)"],
 };
