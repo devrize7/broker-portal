@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft } from "lucide-react";
 
 interface BrokerRow {
@@ -107,7 +108,7 @@ export default function LeaderboardPage() {
           </Link>
           <div className="w-px h-6 bg-white/10" />
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Oath Logistics</h1>
+            <Image src="/oath-logo-white.png" alt="Oath Logistics" width={130} height={51} priority />
             <p className="text-slate-500 text-xs mt-0.5 uppercase tracking-widest">Weekly Leaderboard</p>
           </div>
         </div>

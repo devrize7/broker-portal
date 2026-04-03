@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import Image from "next/image";
 import {
   ComposableMap,
   Geographies,
@@ -312,7 +313,8 @@ export default function CarrierMapPage() {
           <div className="flex items-center gap-3">
             <a href="/" className="text-slate-600 hover:text-slate-300 text-sm transition-colors">← Back</a>
             <span className="text-slate-800">|</span>
-            <h1 className="text-base font-bold">Carrier Lane Map</h1>
+            <Image src="/oath-logo-white.png" alt="Oath Logistics" width={90} height={35} priority />
+            <h1 className="text-base font-bold text-slate-400">Carrier Lane Map</h1>
             {data && (
               <span className="text-xs text-slate-600 bg-white/[0.04] px-2 py-0.5 rounded-full">
                 {corridors.length} corridors · {data.carriers.length} carriers

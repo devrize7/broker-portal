@@ -15,6 +15,36 @@ function getMondayOf(date: Date): Date {
 
 const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
 
+// ── Weekly goal formula (mirrors freight-dashboard lib/queries.ts) ──────────
+const BROKER_HIRE_DATES: Record<string, string> = {
+  "Tom Licata":       "2025-08-18",
+  "Joe Corbett":      "2025-03-31",
+  "David Gheran":     "2026-01-19",
+  "James Davison":    "2025-09-29",
+  "Drew Ivey":        "2025-06-02",
+  "Raphael Jackson":  "2026-01-19",
+  "Ivan Moya":        "2026-01-19",
+  "Grant Morse":      "2026-01-05",
+  "Brian Pollock":    "2026-03-23",
+  "Alonzo Hunt":      "2026-03-23",
+};
+const NON_EXPERIENCED = new Set(["David Gheran", "Ivan Moya"]); // 12-week ramp
+
+function getWeeklyGoal(broker: string, weekMonday: Date): number {
+  const hireStr = BROKER_HIRE_DATES[broker];
+  if (!hireStr) return 0;
+  const hireDate = new Date(hireStr);
+  const totalWeeks = Math.floor(
+    (weekMonday.getTime() - hireDate.getTime()) / (7 * 24 * 60 * 60 * 1000)
+  );
+  const rampWeeks = NON_EXPERIENCED.has(broker) ? 12 : 6;
+  if (totalWeeks < rampWeeks) return 0;
+  const weeksOnGoal = totalWeeks - rampWeeks + 2;
+  const adjustment = broker === "Tom Licata" ? -100 : 0;
+  return Math.max(0, weeksOnGoal * 100 + adjustment);
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function weekPaceFactor(now: Date): number {
   const day = now.getDay();
   const hour = now.getHours() + now.getMinutes() / 60;
@@ -35,15 +65,13 @@ export async function GET() {
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
 
     const excluded = EXCLUDED.map(() => "?").join(",");
-    const [loadsResult, profilesResult] = await Promise.all([
+    const [loadsResult] = await Promise.all([
       db.execute({
         sql: `SELECT salesRep, revenue, carrierCost, pickupDate FROM Load WHERE pickupDate >= ? AND status NOT IN (${excluded})`,
         args: [fourWeeksAgo.toISOString(), ...EXCLUDED],
       }),
-      db.execute({ sql: `SELECT salesRep, weeklyGoal FROM BrokerProfile`, args: [] }),
     ]);
 
-    const goalMap = new Map(profilesResult.rows.map((r) => [r[0] as string, (r[1] as number) ?? 0]));
     const activeBrokers = getActiveBrokerNames();
 
     const currentWeekLoads: { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string }[] = [];
@@ -83,7 +111,7 @@ export async function GET() {
 
     const rows = activeBrokers.map((broker) => {
       const cur = currentByBroker[broker] || { loads: 0, revenue: 0, margin: 0 };
-      const weeklyGoal = goalMap.get(broker) ?? 0;
+      const weeklyGoal = getWeeklyGoal(broker, thisMonday);
 
       const weeks = Object.values(weeklyByBroker[broker] || {});
       const weeksWithLoads = weeks.filter((w) => w.loads > 0);
