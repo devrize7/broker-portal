@@ -37,12 +37,11 @@ function weekRangeLabel(weekStart: string) {
 }
 
 function PaceChip({ status }: { status: BrokerRow["paceStatus"] }) {
-  if (status === "no_goal") return null;
   const cfg = {
     ahead:    { label: "Ahead",    cls: "bg-emerald-900/50 text-emerald-300 border-emerald-700/40" },
     on_pace:  { label: "On Pace",  cls: "bg-yellow-900/50 text-yellow-300 border-yellow-700/40" },
     behind:   { label: "Behind",   cls: "bg-red-900/50 text-red-300 border-red-700/40" },
-    no_goal:  { label: "",         cls: "" },
+    no_goal:  { label: "Ahead",    cls: "bg-emerald-900/50 text-emerald-300 border-emerald-700/40" },
   }[status];
   return (
     <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${cfg.cls}`}>
@@ -283,7 +282,16 @@ export default function LeaderboardPage() {
                             </p>
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-700">—</span>
+                          <div className="min-w-[180px]">
+                            <div className="flex justify-between items-baseline mb-1.5">
+                              <span className="text-xs text-slate-400 tabular-nums font-medium">{fmt(b.current.margin)}</span>
+                              <span className="text-sm font-bold tabular-nums text-emerald-400">100%</span>
+                            </div>
+                            <div className="h-3 bg-white/[0.08] rounded-full overflow-hidden">
+                              <div className="h-full w-full rounded-full bg-emerald-400 transition-all duration-700" />
+                            </div>
+                            <p className="text-xs text-white/70 mt-1.5 text-right">ramping up</p>
+                          </div>
                         )}
                       </td>
                     </tr>
