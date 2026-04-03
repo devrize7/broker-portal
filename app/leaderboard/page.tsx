@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSession } from "next-auth/react";
+import { useSession, signIn, signOut } from "next-auth/react";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft, Search, ChevronUp, ChevronDown } from "lucide-react";
@@ -189,6 +189,33 @@ export default function LeaderboardPage() {
                 <p className="text-lg lg:text-xl font-bold text-emerald-400">{fmt(totals.margin, 2)}</p>
               </div>
             </div>
+          )}
+
+          {/* Sign in/out */}
+          {session ? (
+            <div className="hidden sm:flex items-center gap-2">
+              {(myBrokerName || isAdmin) && (
+                <Link
+                  href={`/broker/${encodeURIComponent(myBrokerName ?? "")}`}
+                  className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
+                >
+                  {isAdmin && !myBrokerName ? "Admin" : myBrokerName}
+                </Link>
+              )}
+              <button
+                onClick={() => signOut({ callbackUrl: "/leaderboard" })}
+                className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => signIn("microsoft-entra-id", { callbackUrl: "/leaderboard" })}
+              className="text-xs text-slate-400 hover:text-white border border-white/10 hover:border-white/20 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Sign in
+            </button>
           )}
 
           {/* Date + refresh */}
