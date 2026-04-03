@@ -193,14 +193,25 @@ export default function LeaderboardPage() {
 
           {/* My Stats + Sign out */}
           <div className="flex items-center gap-3">
-            {myBrokerName && (
+            {myBrokerName ? (
               <Link
                 href={`/broker/${encodeURIComponent(myBrokerName)}`}
                 className="text-sm font-semibold px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
               >
                 My Stats
               </Link>
-            )}
+            ) : isAdmin && data ? (
+              <select
+                onChange={(e) => { if (e.target.value) window.location.href = `/broker/${encodeURIComponent(e.target.value)}`; }}
+                defaultValue=""
+                className="text-sm px-3 py-2 rounded-lg bg-white/[0.06] border border-white/10 text-slate-300 focus:outline-none cursor-pointer"
+              >
+                <option value="" disabled>View broker…</option>
+                {data.brokers.map((b) => (
+                  <option key={b.broker} value={b.broker}>{b.broker}</option>
+                ))}
+              </select>
+            ) : null}
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
