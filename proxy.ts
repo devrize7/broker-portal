@@ -4,8 +4,12 @@ import { NextResponse } from "next/server";
 export const proxy = auth((req) => {
   const { pathname } = req.nextUrl;
 
-  // Always allow login and auth API routes
-  if (pathname.startsWith("/api/auth") || pathname === "/login") {
+  // Always allow public routes without auth
+  if (
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/leaderboard") ||
+    pathname === "/login"
+  ) {
     return NextResponse.next();
   }
 

@@ -102,25 +102,26 @@ export default function LeaderboardPage() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("margin");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      const res = await fetch("/api/leaderboard", { cache: "no-store" });
+      const res = await fetch(`/api/leaderboard?week=${weekOffset}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       setData(await res.json());
       setLastRefresh(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load leaderboard");
     }
-  }, []);
+  }, [weekOffset]);
 
   useEffect(() => {
     load();
-    const refresh = setInterval(load, 60_000);
+    const refresh = weekOffset === 0 ? setInterval(load, 60_000) : null;
     const counter = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => { clearInterval(refresh); clearInterval(counter); };
-  }, [load]);
+    return () => { if (refresh) clearInterval(refresh); clearInterval(counter); };
+  }, [load, weekOffset]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -220,19 +221,47 @@ export default function LeaderboardPage() {
             </button>
           </div>
 
-          {/* Date + refresh */}
+          {/* Week navigation + date */}
           <div className="text-right">
-            <p className="text-sm sm:text-base font-semibold text-slate-200">
-              {data ? weekRangeLabel(data.weekStart) : "—"}
-            </p>
-            <div className="flex items-center justify-end gap-2 mt-0.5">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-              </span>
-              <p className="text-xs text-slate-500">
-                {error ? "Error" : `Live · ${secUntilNext}s`}
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setWeekOffset((w) => Math.max(w - 1, -5))}
+                className="text-slate-500 hover:text-white transition-colors p-1"
+                title="Previous week"
+              >
+                ‹
+              </button>
+              <p className="text-sm sm:text-base font-semibold text-slate-200 min-w-[160px]">
+                {data ? weekRangeLabel(data.weekStart) : "—"}
               </p>
+              <button
+                onClick={() => setWeekOffset((w) => Math.min(w + 1, 0))}
+                disabled={weekOffset >= 0}
+                className={`p-1 transition-colors ${weekOffset >= 0 ? "text-slate-800 cursor-not-allowed" : "text-slate-500 hover:text-white"}`}
+                title="Next week"
+              >
+                ›
+              </button>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-0.5">
+              {weekOffset === 0 ? (
+                <>
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                  </span>
+                  <p className="text-xs text-slate-500">
+                    {error ? "Error" : `Live · ${secUntilNext}s`}
+                  </p>
+                </>
+              ) : (
+                <button
+                  onClick={() => setWeekOffset(0)}
+                  className="text-xs text-emerald-500 hover:text-emerald-400 transition-colors"
+                >
+                  ← Back to this week
+                </button>
+              )}
             </div>
           </div>
         </div>

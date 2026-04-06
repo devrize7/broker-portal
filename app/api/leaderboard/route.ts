@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames } from "@/lib/broker-mapping";
 
@@ -13,8 +13,6 @@ function getMondayOf(date: Date): Date {
   return d;
 }
 
-const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
-
 // ── Weekly goal formula (mirrors freight-dashboard lib/queries.ts) ──────────
 const BROKER_HIRE_DATES: Record<string, string> = {
   "Tom Licata":       "2025-08-18",
@@ -28,7 +26,7 @@ const BROKER_HIRE_DATES: Record<string, string> = {
   "Brian Pollock":    "2026-03-23",
   "Alonzo Hunt":      "2026-03-23",
 };
-const NON_EXPERIENCED = new Set(["David Gheran", "Ivan Moya"]); // 12-week ramp
+const NON_EXPERIENCED = new Set(["David Gheran", "Ivan Moya"]);
 
 function getWeeklyGoal(broker: string, weekMonday: Date): number {
   const hireStr = BROKER_HIRE_DATES[broker];
@@ -43,7 +41,6 @@ function getWeeklyGoal(broker: string, weekMonday: Date): number {
   const adjustment = broker === "Tom Licata" ? -100 : 0;
   return Math.max(0, weeksOnGoal * 100 + adjustment);
 }
-// ────────────────────────────────────────────────────────────────────────────
 
 function weekPaceFactor(now: Date): number {
   const day = now.getDay();
@@ -55,52 +52,89 @@ function weekPaceFactor(now: Date): number {
   return Math.min((dayIndex + dayProgress) / 5, 1);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const now = new Date();
     const thisMonday = getMondayOf(now);
-    const paceFactor = weekPaceFactor(now);
+    const thisMondayKey = thisMonday.toISOString().slice(0, 10);
 
-    const fourWeeksAgo = new Date(thisMonday);
-    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+    // Week offset: 0 = current, -1 = last week, -2 = 2 weeks ago, etc.
+    const weekOffset = parseInt(request.nextUrl.searchParams.get("week") || "0", 10);
+    const targetMonday = new Date(thisMonday);
+    targetMonday.setDate(targetMonday.getDate() + weekOffset * 7);
+    const targetMondayKey = targetMonday.toISOString().slice(0, 10);
+    const isCurrentWeek = weekOffset === 0;
 
-    const excluded = EXCLUDED.map(() => "?").join(",");
-    const [loadsResult] = await Promise.all([
-      db.execute({
-        sql: `SELECT salesRep, revenue, carrierCost, pickupDate FROM Load WHERE pickupDate >= ? AND status NOT IN (${excluded})`,
-        args: [fourWeeksAgo.toISOString(), ...EXCLUDED],
-      }),
-    ]);
+    const paceFactor = isCurrentWeek ? weekPaceFactor(now) : 1;
+
+    // Fetch all loads with profWeek or recent pickupDate for rolling avg
+    const fourWeeksBeforeTarget = new Date(targetMonday);
+    fourWeeksBeforeTarget.setDate(fourWeeksBeforeTarget.getDate() - 28);
+
+    const loadsResult = await db.execute({
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek FROM Load WHERE pickupDate >= ? OR profWeek >= ?`,
+      args: [fourWeeksBeforeTarget.toISOString(), fourWeeksBeforeTarget.toISOString().slice(0, 10)],
+    });
 
     const activeBrokers = getActiveBrokerNames();
 
-    const currentWeekLoads: { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string }[] = [];
-    const priorWeeksLoads: typeof currentWeekLoads = [];
+    // Parse all loads
+    interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null }
+    const allLoads: LoadRow[] = loadsResult.rows.map((row) => ({
+      salesRep: row[0] as string | null,
+      revenue: Number(row[1]) || 0,
+      carrierCost: Number(row[2]) || 0,
+      pickupDate: row[3] as string,
+      profWeek: row[4] as string | null,
+    }));
 
-    for (const row of loadsResult.rows) {
-      const load = {
-        salesRep: row[0] as string | null,
-        revenue: row[1] as number,
-        carrierCost: row[2] as number,
-        pickupDate: row[3] as string,
-      };
-      if (new Date(load.pickupDate) >= thisMonday) currentWeekLoads.push(load);
-      else priorWeeksLoads.push(load);
+    // Target week loads: use profWeek as source of truth
+    const profWeekLoads = allLoads.filter((l) => l.profWeek === targetMondayKey);
+    const targetSunday = new Date(targetMonday);
+    targetSunday.setDate(targetSunday.getDate() + 6);
+    targetSunday.setHours(23, 59, 59, 999);
+
+    const targetWeekLoads = profWeekLoads.length > 0
+      ? profWeekLoads
+      : allLoads.filter((l) => {
+          const pd = new Date(l.pickupDate);
+          return pd >= targetMonday && pd <= targetSunday;
+        });
+
+    // Prior weeks for rolling avg (4 weeks before target week)
+    const weeksWithProfData = new Set<string>();
+    for (const l of allLoads) {
+      if (l.profWeek && l.profWeek < targetMondayKey) weeksWithProfData.add(l.profWeek);
     }
 
+    const priorWeeksLoads = allLoads.filter((l) => {
+      if (l.profWeek && l.profWeek < targetMondayKey && l.profWeek >= fourWeeksBeforeTarget.toISOString().slice(0, 10)) return true;
+      if (!l.profWeek) {
+        const pd = new Date(l.pickupDate);
+        const weekKey = getMondayOf(pd).toISOString().slice(0, 10);
+        if (weekKey >= targetMondayKey) return false;
+        if (weekKey < fourWeeksBeforeTarget.toISOString().slice(0, 10)) return false;
+        if (weeksWithProfData.has(weekKey)) return false;
+        return true;
+      }
+      return false;
+    });
+
+    // Rolling avg: broker -> weekKey -> stats
     const weeklyByBroker: Record<string, Record<string, { loads: number; margin: number }>> = {};
     for (const l of priorWeeksLoads) {
       const { broker, isActive } = resolveActiveBroker(l.salesRep);
       if (!isActive) continue;
-      const weekMon = getMondayOf(new Date(l.pickupDate)).toISOString().slice(0, 10);
+      const weekMon = l.profWeek || getMondayOf(new Date(l.pickupDate)).toISOString().slice(0, 10);
       if (!weeklyByBroker[broker]) weeklyByBroker[broker] = {};
       if (!weeklyByBroker[broker][weekMon]) weeklyByBroker[broker][weekMon] = { loads: 0, margin: 0 };
       weeklyByBroker[broker][weekMon].loads += 1;
       weeklyByBroker[broker][weekMon].margin += l.revenue - l.carrierCost;
     }
 
+    // Target week per broker
     const currentByBroker: Record<string, { loads: number; revenue: number; margin: number }> = {};
-    for (const l of currentWeekLoads) {
+    for (const l of targetWeekLoads) {
       const { broker, isActive } = resolveActiveBroker(l.salesRep);
       if (!isActive) continue;
       if (!currentByBroker[broker]) currentByBroker[broker] = { loads: 0, revenue: 0, margin: 0 };
@@ -111,7 +145,7 @@ export async function GET() {
 
     const rows = activeBrokers.map((broker) => {
       const cur = currentByBroker[broker] || { loads: 0, revenue: 0, margin: 0 };
-      const weeklyGoal = getWeeklyGoal(broker, thisMonday);
+      const weeklyGoal = getWeeklyGoal(broker, targetMonday);
 
       const weeks = Object.values(weeklyByBroker[broker] || {});
       const weeksWithLoads = weeks.filter((w) => w.loads > 0);
@@ -140,6 +174,7 @@ export async function GET() {
         rolling4wAvg: { loads: Math.round(avgLoads * 10) / 10, margin: avgMargin },
         goalPct: weeklyGoal > 0 ? Math.min((cur.margin / weeklyGoal) * 100, 999) : null,
         paceStatus,
+        pacedGoal,
         marginDelta: avgMargin > 0 ? cur.margin - avgMargin : null,
       };
     });
@@ -150,7 +185,14 @@ export async function GET() {
       return b.current.margin - a.current.margin;
     });
 
-    return NextResponse.json({ weekStart: thisMonday.toISOString().slice(0, 10), updatedAt: now.toISOString(), paceFactor, brokers: rows });
+    return NextResponse.json({
+      weekStart: targetMondayKey,
+      weekOffset,
+      isCurrentWeek,
+      updatedAt: now.toISOString(),
+      paceFactor,
+      brokers: rows,
+    });
   } catch (err) {
     console.error("Leaderboard error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
