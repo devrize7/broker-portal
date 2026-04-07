@@ -72,20 +72,22 @@ export async function GET(request: NextRequest) {
     fourWeeksBeforeTarget.setDate(fourWeeksBeforeTarget.getDate() - 28);
 
     const loadsResult = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek FROM Load WHERE pickupDate >= ? OR profWeek >= ?`,
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status FROM Load WHERE pickupDate >= ? OR profWeek >= ?`,
       args: [fourWeeksBeforeTarget.toISOString(), fourWeeksBeforeTarget.toISOString().slice(0, 10)],
     });
 
     const activeBrokers = getActiveBrokerNames();
 
     // Parse all loads
-    interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null }
+    const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent"];
+    interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null; status: string | null }
     const allLoads: LoadRow[] = loadsResult.rows.map((row) => ({
       salesRep: row[0] as string | null,
       revenue: Number(row[1]) || 0,
       carrierCost: Number(row[2]) || 0,
       pickupDate: row[3] as string,
       profWeek: row[4] as string | null,
+      status: row[5] as string | null,
     }));
 
     // Target week loads: use profWeek as source of truth
@@ -97,6 +99,9 @@ export async function GET(request: NextRequest) {
     const targetWeekLoads = profWeekLoads.length > 0
       ? profWeekLoads
       : allLoads.filter((l) => {
+          if (l.profWeek) return false; // skip loads tagged for other weeks
+          if (l.revenue === 0 && l.carrierCost === 0) return false; // skip phantom $0/$0 loads
+          if (EXCLUDED_STATUSES.includes((l.status || "").toLowerCase())) return false; // dispatched+ only
           const pd = new Date(l.pickupDate);
           return pd >= targetMonday && pd <= targetSunday;
         });
@@ -108,8 +113,12 @@ export async function GET(request: NextRequest) {
     }
 
     const priorWeeksLoads = allLoads.filter((l) => {
+      // Always exclude $0/$0 phantom loads
+      if (l.revenue === 0 && l.carrierCost === 0) return false;
       if (l.profWeek && l.profWeek < targetMondayKey && l.profWeek >= fourWeeksBeforeTarget.toISOString().slice(0, 10)) return true;
       if (!l.profWeek) {
+        // No profWeek — apply status filter (profWeek loads already passed Tai's status filter)
+        if (EXCLUDED_STATUSES.includes((l.status || "").toLowerCase())) return false;
         const pd = new Date(l.pickupDate);
         const weekKey = getMondayOf(pd).toISOString().slice(0, 10);
         if (weekKey >= targetMondayKey) return false;

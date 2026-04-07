@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { cityToCoords } from "@/lib/city-coords";
+import { resolveActiveBroker } from "@/lib/broker-mapping";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,6 @@ export async function GET(req: NextRequest) {
     since.setDate(since.getDate() - weeks * 7);
 
     const excluded = EXCLUDED.map(() => "?").join(",");
-    // Columns: [0]=loadNumber [1]=origin [2]=destination [3]=carrier [4]=salesRep [5]=revenue [6]=carrierCost [7]=pickupDate [8]=status
     const result = await db.execute({
       sql: `SELECT loadNumber, origin, destination, carrier, salesRep, revenue, carrierCost, pickupDate, status
             FROM Load WHERE pickupDate >= ? AND status NOT IN (${excluded}) ORDER BY pickupDate DESC`,
@@ -30,6 +30,13 @@ export async function GET(req: NextRequest) {
       const revenue = r[5] as number;
       const carrierCost = r[6] as number;
 
+      // Skip $0/$0 phantom loads
+      if (revenue === 0 && carrierCost === 0) return null;
+
+      // Resolve broker mapping
+      const { broker, isActive } = resolveActiveBroker(salesRep);
+      if (!isActive) return null;
+
       const originCoords = cityToCoords(origin);
       const destCoords = cityToCoords(destination);
       if (!originCoords || !destCoords) return null;
@@ -39,7 +46,7 @@ export async function GET(req: NextRequest) {
         origin,
         destination,
         carrier,
-        salesRep,
+        salesRep: broker,
         originCoords,
         destCoords,
         revenue,

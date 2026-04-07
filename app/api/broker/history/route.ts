@@ -67,12 +67,19 @@ export async function GET(req: NextRequest) {
 
     const excluded = EXCLUDED.map(() => "?").join(",");
     const result = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, origin, destination, carrier
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, origin, destination, carrier, profWeek
             FROM Load
-            WHERE pickupDate >= ? AND status NOT IN (${excluded})
+            WHERE (pickupDate >= ? OR profWeek >= ?) AND status NOT IN (${excluded})
             ORDER BY pickupDate ASC`,
-      args: [since.toISOString(), ...EXCLUDED],
+      args: [since.toISOString(), since.toISOString().slice(0, 10), ...EXCLUDED],
     });
+
+    // Build set of weeks with profWeek-tagged data
+    const weeksWithProfData = new Set<string>();
+    for (const row of result.rows) {
+      const pw = row[7] as string | null;
+      if (pw) weeksWithProfData.add(pw);
+    }
 
     // Group by week
     const weekMap: Record<string, { loads: number; revenue: number; margin: number; weekMonday: Date }> = {};
@@ -86,15 +93,26 @@ export async function GET(req: NextRequest) {
 
       const revenue = row[1] as number;
       const carrierCost = row[2] as number;
+      // Skip $0/$0 phantom loads
+      if (revenue === 0 && carrierCost === 0) continue;
       const margin = revenue - carrierCost;
       const pickupDate = row[3] as string;
       const origin = row[4] as string;
       const destination = row[5] as string;
       const carrier = (row[6] as string) || "Unknown";
+      const profWeek = row[7] as string | null;
 
-      const weekMon = getMondayOf(new Date(pickupDate));
-      const weekKey = weekMon.toISOString().slice(0, 10);
+      // Use profWeek as source of truth for week assignment
+      let weekKey: string;
+      if (profWeek) {
+        weekKey = profWeek;
+      } else {
+        weekKey = getMondayOf(new Date(pickupDate)).toISOString().slice(0, 10);
+        // Skip untagged loads for weeks that have profWeek data
+        if (weeksWithProfData.has(weekKey)) continue;
+      }
 
+      const weekMon = new Date(weekKey + "T00:00:00");
       if (!weekMap[weekKey]) {
         weekMap[weekKey] = { loads: 0, revenue: 0, margin: 0, weekMonday: weekMon };
       }
