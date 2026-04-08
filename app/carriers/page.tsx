@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   ComposableMap,
   Geographies,
@@ -581,9 +582,14 @@ export default function CarrierMapPage() {
                           </div>
                           <span className="text-xs font-bold text-emerald-400 flex-shrink-0 bg-emerald-900/20 px-2 py-0.5 rounded-full">{c.loads}x</span>
                         </div>
-                        <div className="mt-1.5 ml-9">
-                          <p className="text-[10px] text-slate-700">Avg Buy</p>
-                          <p className="text-xs font-medium text-slate-300">{fmtExact(c.avgCost)}</p>
+                        <div className="mt-1.5 ml-9 flex items-end justify-between">
+                          <div>
+                            <p className="text-[10px] text-slate-700">Avg Buy</p>
+                            <p className="text-xs font-medium text-slate-300">{fmtExact(c.avgCost)}</p>
+                          </div>
+                          <Link href={`/carriers/${encodeURIComponent(c.name)}`} className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                            View Profile →
+                          </Link>
                         </div>
                       </div>
                     ))}
@@ -625,22 +631,29 @@ export default function CarrierMapPage() {
                 ) : (
                   <div className="p-3 flex flex-col gap-1.5">
                     {!data ? <p className="text-slate-700 text-sm text-center mt-8">Loading…</p> : topCarriers.map((c, i) => (
-                      <button key={c.name}
-                        onClick={() => { setSelectedCarrier(c.name); setCarrierSearch(c.name); setFromCity(""); setToCity(""); setSelectedState(null); }}
-                        className="w-full text-left bg-white/[0.03] hover:bg-white/[0.06] rounded-lg px-3 py-2.5 border border-white/[0.05] hover:border-white/10 transition-all">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-[10px] text-slate-700 font-mono w-4">{i + 1}</span>
-                            <Truck className="w-3 h-3 text-slate-600 flex-shrink-0" />
-                            <span className="text-xs font-semibold text-slate-200 truncate">{c.name}</span>
+                      <div key={c.name} className="bg-white/[0.03] hover:bg-white/[0.06] rounded-lg border border-white/[0.05] hover:border-white/10 transition-all overflow-hidden">
+                        <button
+                          onClick={() => { setSelectedCarrier(c.name); setCarrierSearch(c.name); setFromCity(""); setToCity(""); setSelectedState(null); }}
+                          className="w-full text-left px-3 py-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-[10px] text-slate-700 font-mono w-4">{i + 1}</span>
+                              <Truck className="w-3 h-3 text-slate-600 flex-shrink-0" />
+                              <span className="text-xs font-semibold text-slate-200 truncate">{c.name}</span>
+                            </div>
+                            <span className="text-xs font-bold text-slate-400 flex-shrink-0">{c.loads}</span>
                           </div>
-                          <span className="text-xs font-bold text-slate-400 flex-shrink-0">{c.loads}</span>
+                          <div className="mt-1 ml-9 flex gap-3">
+                            <span className="text-[10px] text-slate-700">Avg {fmt(c.avgCost)}</span>
+                            <span className="text-[10px] text-slate-700">{c.states.slice(0, 3).join(", ")}{c.states.length > 3 ? "…" : ""}</span>
+                          </div>
+                        </button>
+                        <div className="border-t border-white/[0.04] px-3 py-1.5 flex justify-end">
+                          <Link href={`/carriers/${encodeURIComponent(c.name)}`} className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                            View Profile →
+                          </Link>
                         </div>
-                        <div className="mt-1 ml-9 flex gap-3">
-                          <span className="text-[10px] text-slate-700">Avg {fmt(c.avgCost)}</span>
-                          <span className="text-[10px] text-slate-700">{c.states.slice(0, 3).join(", ")}{c.states.length > 3 ? "…" : ""}</span>
-                        </div>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 )}
