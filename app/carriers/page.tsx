@@ -13,6 +13,8 @@ import {
 import { X, Truck, ArrowRight, MapPin, Search, ChevronDown } from "lucide-react";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
+const CANADA_GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+const CANADA_ID = "124"; // ISO 3166-1 numeric for Canada
 
 // FIPS → state abbreviation for click-on-state filtering
 const FIPS_TO_STATE: Record<string, string> = {
@@ -441,8 +443,34 @@ export default function CarrierMapPage() {
             </div>
           )}
 
-          <ComposableMap projection="geoAlbersUsa" style={{ width: "100%", height: "100%", background: "transparent" }}>
-            {/* States — clickable */}
+          <ComposableMap
+            projection="geoMercator"
+            projectionConfig={{ center: [-96, 45], scale: 580 }}
+            style={{ width: "100%", height: "100%", background: "transparent" }}
+          >
+            {/* Canada background */}
+            <Geographies geography={CANADA_GEO_URL}>
+              {({ geographies }: { geographies: any[] }) =>
+                geographies
+                  .filter((geo: any) => geo.id === CANADA_ID)
+                  .map((geo: any) => (
+                    <Geography
+                      key={geo.rsmKey}
+                      geography={geo}
+                      fill="#0b1220"
+                      stroke="#1e2d3d"
+                      strokeWidth={0.6}
+                      style={{
+                        default: { outline: "none" },
+                        hover: { fill: "#0f1a2a", outline: "none" },
+                        pressed: { outline: "none" },
+                      }}
+                    />
+                  ))
+              }
+            </Geographies>
+
+            {/* US States — clickable */}
             <Geographies geography={GEO_URL}>
               {({ geographies }: { geographies: any[] }) =>
                 geographies.map((geo: any) => {

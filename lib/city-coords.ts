@@ -259,6 +259,40 @@ const CITY_COORDS: Record<string, [number, number]> = {
   "Charleston, WV": [-81.6326, 38.3498],
   // WY
   "Cheyenne, WY": [-104.8202, 41.14],
+
+  // Canada — Ontario
+  "Toronto, ON": [-79.3832, 43.6532],
+  "Ottawa, ON": [-75.6972, 45.4215],
+  "Mississauga, ON": [-79.6441, 43.589],
+  "Brampton, ON": [-79.7624, 43.7315],
+  "Hamilton, ON": [-79.8711, 43.2557],
+  "London, ON": [-81.2453, 42.9849],
+  "Kitchener, ON": [-80.4927, 43.4516],
+  "Windsor, ON": [-83.0364, 42.3149],
+  "Guelph, ON": [-80.2482, 43.5448],
+  "Cambridge, ON": [-80.3126, 43.3616],
+  "Concord, ON": [-79.4901, 43.7928],
+  "Fort Erie, ON": [-78.9301, 42.906],
+  "Oldcastle, ON": [-82.9781, 42.2564],
+  // Canada — Quebec
+  "Montreal, QC": [-73.5673, 45.5017],
+  "Quebec City, QC": [-71.2075, 46.8139],
+  "Laval, QC": [-73.692, 45.6066],
+  "Anjou, QC": [-73.5541, 45.6066],
+  "Varennes, QC": [-73.4334, 45.6834],
+  "Richmond, QC": [-72.1469, 45.6625],
+  // Canada — Alberta
+  "Calgary, AB": [-114.0719, 51.0447],
+  "Edmonton, AB": [-113.4909, 53.5461],
+  "Nisku, AB": [-113.5183, 53.3266],
+  // Canada — British Columbia
+  "Vancouver, BC": [-123.1216, 49.2827],
+  "Surrey, BC": [-122.8491, 49.1913],
+  // Canada — Manitoba
+  "Winnipeg, MB": [-97.1384, 49.8951],
+  // Canada — Saskatchewan
+  "Saskatoon, SK": [-106.6702, 52.1332],
+  "Regina, SK": [-104.6189, 50.4452],
 };
 
 // State centroids as fallback
@@ -279,6 +313,11 @@ const STATE_COORDS: Record<string, [number, number]> = {
   TN: [-86.7, 35.9],  TX: [-99.3, 31.5],  UT: [-111.1, 39.3],
   VA: [-78.7, 37.8],  VT: [-72.7, 44.0],  WA: [-120.7, 47.5],
   WI: [-89.6, 44.5],  WV: [-80.6, 38.6],  WY: [-107.6, 43.0],
+  // Canadian provinces
+  ON: [-80.0, 44.0],  QC: [-72.0, 46.5],  BC: [-123.0, 49.3],
+  AB: [-114.0, 51.5], MB: [-97.1, 50.0],  SK: [-106.0, 51.0],
+  NS: [-63.6, 44.7],  NB: [-66.5, 46.5],  PE: [-63.1, 46.2],
+  NL: [-55.7, 48.5],
 };
 
 /**
