@@ -15,9 +15,10 @@ function getMondayOf(date: Date): Date {
   const day = parseInt(parts.find(p => p.type === 'day')!.value);
   const weekdayStr = parts.find(p => p.type === 'weekday')!.value;
   const dayOfWeek = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(weekdayStr);
-  const d = new Date(Date.UTC(year, month, day));
+  const d = new Date(year, month, day);
   const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  d.setUTCDate(d.getUTCDate() + diff);
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
   return d;
 }
 
