@@ -445,7 +445,7 @@ export default function CarrierMapPage() {
 
           <ComposableMap
             projection="geoMercator"
-            projectionConfig={{ center: [-96, 39], scale: 780 }}
+            projectionConfig={{ center: [-96, 37], scale: 900 }}
             style={{ width: "100%", height: "100%", background: "transparent" }}
           >
             {/* Canada background */}
