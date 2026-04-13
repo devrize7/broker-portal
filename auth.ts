@@ -1,7 +1,11 @@
 import NextAuth from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
-const ADMIN_EMAILS = new Set(["jacob@gowithoath.com"]);
+const ADMIN_EMAILS = new Set([
+  "jacob@gowithoath.com",
+  "kevin.mccaig@gowithoath.com",
+  "brett@gowithoath.com",
+]);
 
 const EMAIL_TO_BROKER: Record<string, string> = {
   "tom.licata@gowithoath.com": "Tom Licata",
