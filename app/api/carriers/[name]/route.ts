@@ -5,11 +5,18 @@ import { resolveActiveBroker } from "@/lib/broker-mapping";
 export const dynamic = "force-dynamic";
 
 function getMondayOf(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short',
+  }).formatToParts(date);
+  const year = parseInt(parts.find(p => p.type === 'year')!.value);
+  const month = parseInt(parts.find(p => p.type === 'month')!.value) - 1;
+  const day = parseInt(parts.find(p => p.type === 'day')!.value);
+  const weekdayStr = parts.find(p => p.type === 'weekday')!.value;
+  const dayOfWeek = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(weekdayStr);
+  const d = new Date(Date.UTC(year, month, day));
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  d.setUTCDate(d.getUTCDate() + diff);
   return d;
 }
 
