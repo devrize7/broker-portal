@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft, Search, ChevronUp, ChevronDown } from "lucide-react";
+import { ArrowLeft, Search, ChevronUp, ChevronDown, Flame } from "lucide-react";
 
 interface BrokerRow {
   broker: string;
@@ -22,6 +22,23 @@ interface LeaderboardData {
   updatedAt: string;
   paceFactor: number;
   brokers: BrokerRow[];
+}
+
+interface ContestCustomer {
+  customer: string;
+  loads: number;
+  gp: number;
+  revenue: number;
+  firstPickup: string;
+}
+
+interface ContestBroker {
+  broker: string;
+  customers: ContestCustomer[];
+  totalGP: number;
+  totalLoads: number;
+  totalRevenue: number;
+  newCustomerCount: number;
 }
 
 type SortKey = "margin" | "loads" | "revenue" | "marginPct" | "avgPerLoad" | "goalPct";
@@ -96,6 +113,8 @@ export default function LeaderboardPage() {
   const isAdmin = sessionUser?.isAdmin ?? false;
 
   const [data, setData] = useState<LeaderboardData | null>(null);
+  const [contestData, setContestData] = useState<ContestBroker[] | null>(null);
+  const [expandedContest, setExpandedContest] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [tick, setTick] = useState(0);
@@ -115,6 +134,13 @@ export default function LeaderboardPage() {
       setError(e instanceof Error ? e.message : "Failed to load leaderboard");
     }
   }, [weekOffset]);
+
+  useEffect(() => {
+    fetch("/api/sales-contest", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setContestData(d.brokers ?? []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     load();
@@ -537,6 +563,96 @@ export default function LeaderboardPage() {
           </>
         )}
       </div>
+
+      {/* Sales Contest */}
+      {contestData && (
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 pb-12 mt-8">
+          <div className="rounded-xl border border-amber-500/30 bg-[#0d1220]">
+            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Flame className="w-5 h-5 text-amber-500" />
+                <h2 className="text-sm font-bold uppercase tracking-wider text-white">Sales Contest — New Customer Challenge</h2>
+              </div>
+              <span className="text-[10px] text-slate-500 border border-white/[0.08] rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                Since Feb 20, 2026
+              </span>
+            </div>
+            <div className="p-4">
+              <p className="text-xs text-slate-600 mb-4">
+                First load with a brand new customer since contest kickoff. Ranked by total gross profit.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {contestData.map((b, i) => {
+                  const isTop = i === 0 && b.totalGP > 0;
+                  const rank = b.totalGP > 0 ? (i < 3 ? MEDALS[i] : `#${i + 1}`) : "";
+                  const isExpanded = expandedContest.has(b.broker);
+                  return (
+                    <div
+                      key={b.broker}
+                      className={`rounded-lg border p-4 ${
+                        isTop
+                          ? "border-amber-500/40 bg-amber-500/[0.06]"
+                          : "border-white/[0.06] bg-white/[0.02]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          {rank && <span className="text-base">{rank}</span>}
+                          <span className="font-semibold text-sm text-white">{b.broker}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-sm font-bold tabular-nums ${b.totalGP > 0 ? "text-emerald-400" : "text-slate-600"}`}>
+                            {fmt(b.totalGP)}
+                          </span>
+                          <p className="text-[10px] text-slate-600">
+                            {b.newCustomerCount} new · {b.totalLoads} loads
+                          </p>
+                        </div>
+                      </div>
+                      {b.customers.length > 0 ? (
+                        <>
+                          <div className="space-y-1.5 mt-3 border-t border-white/[0.06] pt-2">
+                            {(isExpanded ? b.customers : b.customers.slice(0, 3)).map((c) => (
+                              <div key={c.customer} className="flex items-start justify-between text-xs">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-slate-300 truncate">{c.customer}</p>
+                                  <p className="text-slate-600">
+                                    {c.loads} loads · first {new Date(c.firstPickup + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </p>
+                                </div>
+                                <span className={`ml-2 font-semibold shrink-0 tabular-nums ${c.gp >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                  {fmt(c.gp)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          {b.customers.length > 3 && (
+                            <button
+                              onClick={() => setExpandedContest((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(b.broker)) next.delete(b.broker);
+                                else next.add(b.broker);
+                                return next;
+                              })}
+                              className="text-[10px] text-slate-500 hover:text-slate-300 mt-2 transition-colors"
+                            >
+                              {isExpanded ? "Show less" : `+${b.customers.length - 3} more`}
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-xs text-slate-700 text-center py-3 mt-2 border-t border-white/[0.06]">
+                          No new customers yet
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
