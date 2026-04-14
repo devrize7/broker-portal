@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
     const activeBrokers = getActiveBrokerNames();
 
     // Parse all loads
-    const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent"];
+    const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
     interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null; status: string | null }
     const allLoads: LoadRow[] = loadsResult.rows.map((row) => ({
       salesRep: row[0] as string | null,
