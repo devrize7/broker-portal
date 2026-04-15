@@ -5,24 +5,24 @@ import { resolveActiveBroker, getActiveBrokerNames } from "@/lib/broker-mapping"
 export const dynamic = "force-dynamic";
 
 const CONTEST_START = "2026-02-20";
-const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent"];
+const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
 
 export async function GET() {
   try {
     const activeBrokers = getActiveBrokerNames();
 
-    // Loads since contest start
-    const contestResult = await db.execute({
-      sql: `SELECT salesRep, customer, revenue, (revenue - carrierCost) as margin, pickupDate, status
-            FROM Load WHERE pickupDate >= ? AND customer IS NOT NULL`,
-      args: [CONTEST_START],
-    });
-
-    // Pre-contest loads to determine existing customers
-    const preContestResult = await db.execute({
-      sql: `SELECT DISTINCT customer FROM Load WHERE pickupDate < ? AND customer IS NOT NULL`,
-      args: [CONTEST_START],
-    });
+    // Run both queries concurrently
+    const [contestResult, preContestResult] = await Promise.all([
+      db.execute({
+        sql: `SELECT salesRep, customer, revenue, (revenue - carrierCost) as margin, pickupDate, status
+              FROM Load WHERE pickupDate >= ? AND customer IS NOT NULL`,
+        args: [CONTEST_START],
+      }),
+      db.execute({
+        sql: `SELECT DISTINCT customer FROM Load WHERE pickupDate < ? AND customer IS NOT NULL`,
+        args: [CONTEST_START],
+      }),
+    ]);
 
     const existingCustomers = new Set<string>();
     for (const row of preContestResult.rows) {
