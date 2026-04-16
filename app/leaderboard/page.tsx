@@ -617,7 +617,7 @@ export default function LeaderboardPage() {
                                 <div className="min-w-0 flex-1">
                                   <p className="font-medium text-slate-300 truncate">{c.customer}</p>
                                   <p className="text-slate-600">
-                                    {c.loads} loads · first {new Date(c.firstPickup + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                    {c.loads} loads · first {c.firstPickup ? new Date(c.firstPickup).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
                                   </p>
                                 </div>
                                 <span className={`ml-2 font-semibold shrink-0 tabular-nums ${c.gp >= 0 ? "text-emerald-400" : "text-red-400"}`}>
