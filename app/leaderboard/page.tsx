@@ -573,9 +573,14 @@ export default function LeaderboardPage() {
                 <Flame className="w-5 h-5 text-amber-500" />
                 <h2 className="text-sm font-bold uppercase tracking-wider text-white">Sales Contest — New Customer Challenge</h2>
               </div>
-              <span className="text-[10px] text-slate-500 border border-white/[0.08] rounded-full px-2.5 py-0.5 uppercase tracking-wider">
-                Since Feb 20, 2026
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-500 border border-white/[0.08] rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                  Since Feb 20, 2026
+                </span>
+                <span className="text-[10px] text-amber-400 border border-amber-500/40 bg-amber-500/10 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                  Ends Friday, July 25
+                </span>
+              </div>
             </div>
             <div className="p-4">
               <p className="text-xs text-slate-600 mb-4">
