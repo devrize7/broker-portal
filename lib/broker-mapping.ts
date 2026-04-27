@@ -22,6 +22,31 @@ export type ActiveBroker = (typeof ACTIVE_BROKERS)[number];
 
 const ACTIVE_SET = new Set<string>(ACTIVE_BROKERS);
 
+/**
+ * Sales contest exclusions.
+ * Broker still owns the customer (kept on leaderboard, scorecard, broker
+ * profit) but doesn't get sales contest credit. Use case: Ivan is the
+ * account manager for Cleveland Kitchen (5% commission in TAI) but wasn't
+ * the primary sales broker who brought the account in, so it shouldn't
+ * count toward the contest.
+ */
+const SALES_CONTEST_EXCLUSIONS: Record<string, string[]> = {
+  "Cleveland Kitchen": ["Ivan Moya"],
+};
+
+/**
+ * Check if a broker+customer combo should be excluded from sales contest scoring.
+ * Use in sales contest surfaces ONLY — leaderboard/scorecard/broker profit keep credit.
+ */
+export function isSalesContestExcluded(
+  broker: string | null | undefined,
+  customer: string | null | undefined
+): boolean {
+  if (!broker || !customer) return false;
+  const excluded = SALES_CONTEST_EXCLUSIONS[customer];
+  return excluded ? excluded.includes(broker) : false;
+}
+
 export interface BrokerResolution {
   broker: string;
   isActive: boolean;

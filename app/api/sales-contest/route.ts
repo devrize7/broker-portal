@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { resolveActiveBroker, getActiveBrokerNames } from "@/lib/broker-mapping";
+import { resolveActiveBroker, getActiveBrokerNames, isSalesContestExcluded } from "@/lib/broker-mapping";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +53,9 @@ export async function GET() {
         if (isActive) { activeBroker = broker; break; }
       }
       if (!activeBroker) continue;
+      // Account-manager-only credit (e.g. Ivan/Cleveland Kitchen) — broker keeps
+      // leaderboard/profit credit but doesn't earn sales contest standing.
+      if (isSalesContestExcluded(activeBroker, customer)) continue;
 
       if (!contestMap.has(activeBroker)) contestMap.set(activeBroker, new Map());
       const brokerMap = contestMap.get(activeBroker)!;
