@@ -31,10 +31,18 @@ const BROKER_HIRE_DATES: Record<string, string> = {
   "Raphael Jackson":  "2026-01-19",
   "Ivan Moya":        "2026-01-19",
   "Grant Morse":      "2026-01-05",
-  "Brian Pollock":    "2026-03-23",
   "Alonzo Hunt":      "2026-03-23",
+  "Reggie Pena":      "2026-05-04",
+  "Eric Hedgmon":     "2026-05-04",
+  "Chase Long":       "2026-05-18",
 };
-const NON_EXPERIENCED = new Set(["David Gheran", "Ivan Moya"]);
+const NON_EXPERIENCED = new Set([
+  "David Gheran",
+  "Ivan Moya",
+  "Reggie Pena",
+  "Eric Hedgmon",
+  "Chase Long",
+]);
 
 function getWeeklyGoal(broker: string, weekMonday: Date): number {
   const hireStr = BROKER_HIRE_DATES[broker];

@@ -16,8 +16,10 @@ const EMAIL_TO_BROKER: Record<string, string> = {
   "raphael.jackson@gowithoath.com": "Raphael Jackson",
   "david.gheran@gowithoath.com": "David Gheran",
   "ivan.moya@gowithoath.com": "Ivan Moya",
-  "brian.pollock@gowithoath.com": "Brian Pollock",
   "alonzo.hunt@gowithoath.com": "Alonzo Hunt",
+  "reggie.pena@gowithoath.com": "Reggie Pena",
+  "eric.hedgmon@gowithoath.com": "Eric Hedgmon",
+  "chase.long@gowithoath.com": "Chase Long",
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth({

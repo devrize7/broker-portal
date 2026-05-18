@@ -14,9 +14,27 @@ const ACTIVE_BROKERS = [
   "Raphael Jackson",
   "David Gheran",
   "Ivan Moya",
-  "Brian Pollock",
   "Alonzo Hunt",
+  // Hired May 4, 2026
+  "Reggie Pena",
+  "Eric Hedgmon",
+  // Hired May 18, 2026
+  "Chase Long",
 ] as const;
+
+/**
+ * Departed brokers — left the company. Their historical loads still exist
+ * in the DB for reporting integrity, but they don't appear on any view
+ * (active or inactive) in the dashboard or broker portal.
+ */
+const DEPARTED_BROKERS = new Set<string>([
+  "Brian Pollock", // left May 2026
+]);
+
+export function isDeparted(name: string | null | undefined): boolean {
+  if (!name) return false;
+  return DEPARTED_BROKERS.has(name);
+}
 
 export type ActiveBroker = (typeof ACTIVE_BROKERS)[number];
 
