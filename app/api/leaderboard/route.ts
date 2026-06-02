@@ -21,6 +21,13 @@ function getMondayOf(date: Date): Date {
   return d;
 }
 
+/** Calendar date (YYYY-MM-DD) of the Sunday ending the week starting on `mondayKey`. */
+function weekEndKey(mondayKey: string): string {
+  const d = new Date(mondayKey + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d.toISOString().slice(0, 10);
+}
+
 // ── Weekly goal formula (mirrors freight-dashboard lib/queries.ts) ──────────
 const BROKER_HIRE_DATES: Record<string, string> = {
   "Tom Licata":       "2025-08-18",
@@ -91,6 +98,15 @@ export async function GET(request: NextRequest) {
     // Fetch all loads with profWeek or recent pickupDate for rolling avg
     const fourWeeksBeforeTarget = new Date(targetMonday);
     fourWeeksBeforeTarget.setDate(fourWeeksBeforeTarget.getDate() - 28);
+
+    // The 4 completed week-Monday keys before the target week (hire-capped divisor, OATH-60).
+    const completedWeekKeys: string[] = [];
+    for (let i = 1; i <= 4; i++) {
+      const m = new Date(targetMonday);
+      m.setDate(m.getDate() - i * 7);
+      m.setHours(0, 0, 0, 0);
+      completedWeekKeys.push(m.toISOString().slice(0, 10));
+    }
 
     const loadsResult = await db.execute({
       sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status FROM Load WHERE pickupDate >= ? OR profWeek >= ?`,
@@ -177,12 +193,23 @@ export async function GET(request: NextRequest) {
       const cur = currentByBroker[broker] || { loads: 0, revenue: 0, margin: 0 };
       const weeklyGoal = getWeeklyGoal(broker, targetMonday);
 
-      const weeks = Object.values(weeklyByBroker[broker] || {});
-      const weeksWithLoads = weeks.filter((w) => w.loads > 0);
-      const avgMargin = weeksWithLoads.length > 0
-        ? weeksWithLoads.reduce((s, w) => s + w.margin, 0) / weeksWithLoads.length : 0;
-      const avgLoads = weeksWithLoads.length > 0
-        ? weeksWithLoads.reduce((s, w) => s + w.loads, 0) / weeksWithLoads.length : 0;
+      // Last 4 completed weeks (OATH-60): divide by the number of those 4 weeks
+      // on/after the broker's hire week (capped at 4, min 1) — completed $0 weeks
+      // count and drag the average down; new hires aren't penalized for weeks
+      // before they existed.
+      const brokerWeeks = Object.values(weeklyByBroker[broker] || {});
+      const totalMargin = brokerWeeks.reduce((s, w) => s + w.margin, 0);
+      const totalLoads = brokerWeeks.reduce((s, w) => s + w.loads, 0);
+      // hireStr is already a YYYY-MM-DD calendar date; compare directly (no
+      // getMondayOf, which would shift it into the prior ET week).
+      const hireStr = BROKER_HIRE_DATES[broker];
+      let eligibleWeeks = 4;
+      if (hireStr) {
+        eligibleWeeks = completedWeekKeys.filter((k) => weekEndKey(k) >= hireStr).length;
+      }
+      const divisor = Math.max(1, eligibleWeeks);
+      const avgMargin = totalMargin / divisor;
+      const avgLoads = totalLoads / divisor;
 
       const pacedGoal = weeklyGoal * paceFactor;
       const paceStatus: "ahead" | "on_pace" | "behind" | "no_goal" =
