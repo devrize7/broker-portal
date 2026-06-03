@@ -10,7 +10,7 @@ const ADMIN_EMAILS = new Set([
 const EMAIL_TO_BROKER: Record<string, string> = {
   "tom.licata@gowithoath.com": "Tom Licata",
   "james.davison@gowithoath.com": "James Davison",
-  "joe.corbett@gowithoath.com": "Joe Corbett",
+  "jcorbett@gowithoath.com": "Joe Corbett",
   "drew.ivey@gowithoath.com": "Drew Ivey",
   "grant.morse@gowithoath.com": "Grant Morse",
   "raphael.jackson@gowithoath.com": "Raphael Jackson",
