@@ -18,8 +18,6 @@ const ACTIVE_BROKERS = [
   // Hired May 4, 2026
   "Reggie Pena",
   "Eric Hedgmon",
-  // Hired May 18, 2026
-  "Chase Long",
 ] as const;
 
 /**
@@ -29,6 +27,7 @@ const ACTIVE_BROKERS = [
  */
 const DEPARTED_BROKERS = new Set<string>([
   "Brian Pollock", // left May 2026
+  "Chase Long", // left June 2026 — removed from all leaderboards
 ]);
 
 export function isDeparted(name: string | null | undefined): boolean {
