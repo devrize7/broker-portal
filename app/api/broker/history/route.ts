@@ -36,14 +36,12 @@ const BROKER_HIRE_DATES: Record<string, string> = {
   "Alonzo Hunt":      "2026-03-23",
   "Reggie Pena":      "2026-05-04",
   "Eric Hedgmon":     "2026-05-04",
-  "Chase Long":       "2026-05-18",
 };
 const NON_EXPERIENCED = new Set([
   "David Gheran",
   "Ivan Moya",
   "Reggie Pena",
   "Eric Hedgmon",
-  "Chase Long",
 ]);
 
 function getWeeklyGoal(broker: string, weekMonday: Date): number {
