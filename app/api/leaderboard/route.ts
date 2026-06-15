@@ -41,6 +41,7 @@ const BROKER_HIRE_DATES: Record<string, string> = {
   "Alonzo Hunt":      "2026-03-23",
   "Reggie Pena":      "2026-05-04",
   "Eric Hedgmon":     "2026-05-04",
+  "Brett Olgin":      "2026-06-15",
 };
 const NON_EXPERIENCED = new Set([
   "David Gheran",

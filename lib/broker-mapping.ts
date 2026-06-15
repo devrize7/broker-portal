@@ -18,6 +18,8 @@ const ACTIVE_BROKERS = [
   // Hired May 4, 2026
   "Reggie Pena",
   "Eric Hedgmon",
+  // Hired Jun 15, 2026
+  "Brett Olgin",
 ] as const;
 
 /**
