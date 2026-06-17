@@ -168,11 +168,51 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.loads - a.loads)
       .slice(0, 8);
 
+    // ── All-time RECORD WEEK (best completed week by margin) ──────────────────
+    // Separate from the windowed weeklyData above — the record must look back over
+    // the broker's whole tenure, not just the 8/12/26-week view. The in-progress
+    // week is excluded (a partial week can't be a record).
+    const recRes = await db.execute({
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek FROM Load WHERE status NOT IN (${excluded})`,
+      args: [...EXCLUDED],
+    });
+    const recProfWeeks = new Set<string>();
+    for (const row of recRes.rows) { const pw = row[4] as string | null; if (pw) recProfWeeks.add(pw); }
+    const recWeekMap: Record<string, { margin: number; loads: number }> = {};
+    for (const row of recRes.rows) {
+      const { broker, isActive } = resolveActiveBroker(row[0] as string | null);
+      if (!isActive || broker !== requestedBroker) continue;
+      const revenue = row[1] as number;
+      const carrierCost = row[2] as number;
+      if (revenue === 0 && carrierCost === 0) continue; // phantom $0/$0
+      const profWeek = row[4] as string | null;
+      let weekKey: string;
+      if (profWeek) weekKey = profWeek;
+      else { weekKey = getMondayOf(new Date(row[3] as string)).toISOString().slice(0, 10); if (recProfWeeks.has(weekKey)) continue; }
+      if (!recWeekMap[weekKey]) recWeekMap[weekKey] = { margin: 0, loads: 0 };
+      recWeekMap[weekKey].margin += revenue - carrierCost;
+      recWeekMap[weekKey].loads += 1;
+    }
+    const thisMondayKey = thisMonday.toISOString().slice(0, 10);
+    let recordWeek: { weekKey: string; weekLabel: string; margin: number; loads: number } | null = null;
+    for (const [weekKey, d] of Object.entries(recWeekMap)) {
+      if (weekKey === thisMondayKey) continue; // exclude the in-progress week
+      if (!recordWeek || d.margin > recordWeek.margin) {
+        recordWeek = {
+          weekKey,
+          weekLabel: new Date(weekKey + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          margin: d.margin,
+          loads: d.loads,
+        };
+      }
+    }
+
     return NextResponse.json({
       broker: requestedBroker,
       weeklyData,
       topLanes,
       topCarriers,
+      recordWeek,
     });
   } catch (err) {
     console.error("Broker history error:", err);
