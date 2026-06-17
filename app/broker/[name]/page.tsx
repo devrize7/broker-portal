@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trophy } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -32,6 +32,7 @@ interface BrokerHistory {
   weeklyData: WeeklyPoint[];
   topLanes: { lane: string; loads: number; margin: number }[];
   topCarriers: { carrier: string; loads: number; margin: number }[];
+  recordWeek: { weekKey: string; weekLabel: string; margin: number; loads: number } | null;
 }
 
 function fmt(n: number, decimals = 0) {
@@ -181,7 +182,24 @@ export default function BrokerDrilldownPage() {
         ) : (
           <>
             {/* Summary cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {/* Record Week — best completed week ever (all-time), gold accent */}
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3">
+                <p className="text-xs text-amber-400/90 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <Trophy className="w-3 h-3" /> Record Week
+                </p>
+                {data.recordWeek ? (
+                  <>
+                    <p className="text-xl font-bold text-amber-300 tabular-nums">{fmt(data.recordWeek.margin)}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">week of {data.recordWeek.weekLabel} · {data.recordWeek.loads} loads</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xl font-bold text-slate-600">—</p>
+                    <p className="text-xs text-slate-600 mt-0.5">no completed weeks yet</p>
+                  </>
+                )}
+              </div>
               <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
                 <p className="text-xs text-slate-600 uppercase tracking-wider mb-1">This Week</p>
                 <p className="text-xl font-bold text-emerald-400">
