@@ -188,6 +188,42 @@ export async function GET(request: NextRequest) {
       currentByBroker[broker].margin += l.revenue - l.carrierCost;
     }
 
+    // ── All-time RECORD WEEK per broker (best completed week by margin) ───────
+    // Matches the command-center scorecard. The windowed fetch above is only 4
+    // weeks, so this is a separate all-loads query; the in-progress week is excluded.
+    const recRes = await db.execute({
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status FROM Load`,
+    });
+    const recProfWeeks = new Set<string>();
+    for (const r of recRes.rows) { const pw = r[4] as string | null; if (pw) recProfWeeks.add(pw); }
+    const recByBroker: Record<string, Record<string, number>> = {};
+    for (const r of recRes.rows) {
+      const { broker, isActive } = resolveActiveBroker(r[0] as string | null);
+      if (!isActive) continue;
+      const revenue = Number(r[1]) || 0;
+      const carrierCost = Number(r[2]) || 0;
+      if (revenue === 0 && carrierCost === 0) continue; // phantom $0/$0
+      const profWeek = r[4] as string | null;
+      let wk: string;
+      if (profWeek) wk = profWeek;
+      else {
+        if (EXCLUDED_STATUSES.includes(((r[5] as string) || "").toLowerCase())) continue;
+        wk = getMondayOf(new Date(r[3] as string)).toISOString().slice(0, 10);
+        if (recProfWeeks.has(wk)) continue; // profWeek is source of truth
+      }
+      if (!recByBroker[broker]) recByBroker[broker] = {};
+      recByBroker[broker][wk] = (recByBroker[broker][wk] || 0) + (revenue - carrierCost);
+    }
+    const brokerRecords: Record<string, { amount: number; weekOf: string }> = {};
+    for (const [broker, weeks] of Object.entries(recByBroker)) {
+      let amount = 0, weekOf = "";
+      for (const [wk, m] of Object.entries(weeks)) {
+        if (wk === thisMondayKey) continue; // exclude in-progress week
+        if (m > amount) { amount = m; weekOf = wk; }
+      }
+      brokerRecords[broker] = { amount, weekOf };
+    }
+
     const rows = activeBrokers.map((broker) => {
       const cur = currentByBroker[broker] || { loads: 0, revenue: 0, margin: 0 };
       const weeklyGoal = getWeeklyGoal(broker, targetMonday);
@@ -232,6 +268,7 @@ export async function GET(request: NextRequest) {
         paceStatus,
         pacedGoal,
         marginDelta: avgMargin > 0 ? cur.margin - avgMargin : null,
+        record: brokerRecords[broker] || { amount: 0, weekOf: "" },
       };
     });
 
