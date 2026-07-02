@@ -173,6 +173,9 @@ export default function LeaderboardPage() {
     (acc, b) => ({ loads: acc.loads + b.current.loads, revenue: acc.revenue + b.current.revenue, margin: acc.margin + b.current.margin }),
     { loads: 0, revenue: 0, margin: 0 }
   );
+  // Aggregate margin % across all active brokers (blended, not an average of the
+  // per-broker %s) — total margin ÷ total revenue.
+  const totalMarginPct = totals.revenue > 0 ? (totals.margin / totals.revenue) * 100 : 0;
 
   const secSinceRefresh = lastRefresh ? Math.floor((Date.now() - lastRefresh.getTime()) / 1000) : 0;
   const secUntilNext = Math.max(60 - secSinceRefresh, 0);
@@ -215,6 +218,10 @@ export default function LeaderboardPage() {
               <div className="text-right">
                 <p className="text-xs text-slate-600 uppercase tracking-wider">Margin</p>
                 <p className="text-lg lg:text-xl font-bold text-emerald-400">{fmt(totals.margin, 2)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-600 uppercase tracking-wider">Margin %</p>
+                <p className="text-lg lg:text-xl font-bold text-emerald-400">{totalMarginPct.toFixed(1)}%</p>
               </div>
             </div>
           )}
