@@ -10,7 +10,7 @@ const ADMIN_EMAILS = new Set([
 const EMAIL_TO_BROKER: Record<string, string> = {
   "tom.licata@gowithoath.com": "Tom Licata",
   "james.davison@gowithoath.com": "James Davison",
-  "jcorbett@gowithoath.com": "Joe Corbett",
+  // "jcorbett@gowithoath.com": "Joe Corbett" — removed from active 2026-07-03 (portal login disabled)
   "drew.ivey@gowithoath.com": "Drew Ivey",
   "grant.morse@gowithoath.com": "Grant Morse",
   "raphael.jackson@gowithoath.com": "Raphael Jackson",

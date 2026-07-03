@@ -8,7 +8,7 @@
 const ACTIVE_BROKERS = [
   "Tom Licata",
   "James Davison",
-  "Joe Corbett",
+  // Joe Corbett removed from active 2026-07-03 (Jacob) — mirrors freight-dashboard
   "Drew Ivey",
   "Grant Morse",
   "Raphael Jackson",

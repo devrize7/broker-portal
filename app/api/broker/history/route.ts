@@ -26,7 +26,7 @@ const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
 
 const BROKER_HIRE_DATES: Record<string, string> = {
   "Tom Licata":       "2025-08-18",
-  "Joe Corbett":      "2025-03-31",
+  // "Joe Corbett":   "2025-03-31" — removed from active 2026-07-03
   "David Gheran":     "2026-01-19",
   "James Davison":    "2025-09-29",
   "Drew Ivey":        "2025-06-02",
