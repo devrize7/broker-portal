@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
+import { getRoster } from "@/lib/roster";
 
 const ADMIN_EMAILS = new Set([
   "jacob@gowithoath.com",
@@ -7,20 +8,18 @@ const ADMIN_EMAILS = new Set([
   "brett@gowithoath.com",
 ]);
 
-const EMAIL_TO_BROKER: Record<string, string> = {
-  "tom.licata@gowithoath.com": "Tom Licata",
-  "james.davison@gowithoath.com": "James Davison",
-  // "jcorbett@gowithoath.com": "Joe Corbett" — removed from active 2026-07-03 (portal login disabled)
-  "drew.ivey@gowithoath.com": "Drew Ivey",
-  "grant.morse@gowithoath.com": "Grant Morse",
-  "raphael.jackson@gowithoath.com": "Raphael Jackson",
-  "david.gheran@gowithoath.com": "David Gheran",
-  "ivan.moya@gowithoath.com": "Ivan Moya",
-  "alonzo.hunt@gowithoath.com": "Alonzo Hunt",
-  "reggie.pena@gowithoath.com": "Reggie Pena",
-  "eric.hedgmon@gowithoath.com": "Eric Hedgmon",
-  "brett.olgin@gowithoath.com": "Brett Olgin",
-};
+/**
+ * Resolve a broker name from a login email via the roster feed (lowercased
+ * emails, ACTIVE brokers only — deactivating a broker disables their login,
+ * matching the old EMAIL_TO_BROKER behavior). Only called during actual
+ * sign-in (profile present), never on per-request token decode. getRoster()
+ * never throws — it falls back to the baked-in seed on any feed outage, so a
+ * transient error can never lock the whole team out.
+ */
+async function brokerForEmail(email: string): Promise<string | null> {
+  const roster = await getRoster();
+  return roster.emailToBroker.get(email) ?? null;
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -33,12 +32,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ profile }) {
       const email = (profile?.email ?? "").toLowerCase();
-      return !!(email && (EMAIL_TO_BROKER[email] || ADMIN_EMAILS.has(email)));
+      if (!email) return false;
+      if (ADMIN_EMAILS.has(email)) return true;
+      return (await brokerForEmail(email)) !== null;
     },
     async jwt({ token, profile }) {
       if (profile?.email) {
         const email = profile.email.toLowerCase();
-        token.brokerName = EMAIL_TO_BROKER[email] ?? null;
+        token.brokerName = await brokerForEmail(email);
         token.isAdmin = ADMIN_EMAILS.has(email);
       }
       return token;

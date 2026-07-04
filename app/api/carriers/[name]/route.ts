@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
+import { getRoster } from "@/lib/roster";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,7 @@ export async function GET(
   const weeks = Math.min(parseInt(req.nextUrl.searchParams.get("weeks") ?? "12", 10), 52);
 
   try {
+    const roster = await getRoster();
     const now = new Date();
     const thisMonday = getMondayOf(now);
     const since = new Date(thisMonday);
@@ -96,7 +98,7 @@ export async function GET(
       const profWeek = row[8] as string | null;
       const salesRep = row[0] as string | null;
 
-      const { broker } = resolveActiveBroker(salesRep);
+      const { broker } = resolveActiveBroker(roster, salesRep);
 
       // Weekly grouping
       let weekKey: string;

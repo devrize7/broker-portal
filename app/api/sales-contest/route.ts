@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames, isSalesContestExcluded } from "@/lib/broker-mapping";
+import { getRoster } from "@/lib/roster";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,8 @@ const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", 
 
 export async function GET() {
   try {
-    const activeBrokers = getActiveBrokerNames();
+    const roster = await getRoster();
+    const activeBrokers = getActiveBrokerNames(roster);
 
     // Run both queries concurrently
     const [contestResult, preContestResult] = await Promise.all([
@@ -49,7 +51,7 @@ export async function GET() {
       const reps = salesRep.split(",").map((r) => r.trim());
       let activeBroker: string | null = null;
       for (const r of reps) {
-        const { broker, isActive } = resolveActiveBroker(r);
+        const { broker, isActive } = resolveActiveBroker(roster, r);
         if (isActive) { activeBroker = broker; break; }
       }
       if (!activeBroker) continue;

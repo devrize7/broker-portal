@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
+import { getRoster, getWeeklyGoal } from "@/lib/roster";
 
 export const dynamic = "force-dynamic";
 
@@ -24,40 +25,8 @@ function getMondayOf(date: Date): Date {
 
 const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
 
-const BROKER_HIRE_DATES: Record<string, string> = {
-  "Tom Licata":       "2025-08-18",
-  // "Joe Corbett":   "2025-03-31" — removed from active 2026-07-03
-  "David Gheran":     "2026-01-19",
-  "James Davison":    "2025-09-29",
-  "Drew Ivey":        "2025-06-02",
-  "Raphael Jackson":  "2026-01-19",
-  "Ivan Moya":        "2026-01-19",
-  "Grant Morse":      "2026-01-05",
-  "Alonzo Hunt":      "2026-03-23",
-  "Reggie Pena":      "2026-05-04",
-  "Eric Hedgmon":     "2026-05-04",
-  "Brett Olgin":      "2026-06-15",
-};
-const NON_EXPERIENCED = new Set([
-  "David Gheran",
-  "Ivan Moya",
-  "Reggie Pena",
-  "Eric Hedgmon",
-]);
-
-function getWeeklyGoal(broker: string, weekMonday: Date): number {
-  const hireStr = BROKER_HIRE_DATES[broker];
-  if (!hireStr) return 0;
-  const hireDate = new Date(hireStr);
-  const totalWeeks = Math.floor(
-    (weekMonday.getTime() - hireDate.getTime()) / (7 * 24 * 60 * 60 * 1000)
-  );
-  const rampWeeks = NON_EXPERIENCED.has(broker) ? 12 : 6;
-  if (totalWeeks < rampWeeks) return 0;
-  const weeksOnGoal = totalWeeks - rampWeeks + 2;
-  const adjustment = broker === "Tom Licata" ? -100 : 0;
-  return Math.max(0, weeksOnGoal * 100 + adjustment);
-}
+// Weekly goal (hire dates / ramp / Tom's -100) comes from the roster feed —
+// getWeeklyGoal in lib/roster.ts. No hardcoded mirror here.
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -75,6 +44,7 @@ export async function GET(req: NextRequest) {
   const weeks = Math.min(parseInt(req.nextUrl.searchParams.get("weeks") ?? "12", 10), 52);
 
   try {
+    const roster = await getRoster();
     const now = new Date();
     const thisMonday = getMondayOf(now);
     const since = new Date(thisMonday);
@@ -103,7 +73,7 @@ export async function GET(req: NextRequest) {
 
     for (const row of result.rows) {
       const salesRep = row[0] as string | null;
-      const { broker, isActive } = resolveActiveBroker(salesRep);
+      const { broker, isActive } = resolveActiveBroker(roster, salesRep);
       if (!isActive || broker !== requestedBroker) continue;
 
       const revenue = row[1] as number;
@@ -153,7 +123,7 @@ export async function GET(req: NextRequest) {
         loads: data.loads,
         revenue: data.revenue,
         margin: data.margin,
-        goal: getWeeklyGoal(requestedBroker, data.weekMonday),
+        goal: getWeeklyGoal(roster, requestedBroker, data.weekMonday),
         isCurrent: weekKey === thisMonday.toISOString().slice(0, 10),
       }))
       .sort((a, b) => a.weekKey.localeCompare(b.weekKey));
@@ -180,7 +150,7 @@ export async function GET(req: NextRequest) {
     for (const row of recRes.rows) { const pw = row[4] as string | null; if (pw) recProfWeeks.add(pw); }
     const recWeekMap: Record<string, { margin: number; loads: number }> = {};
     for (const row of recRes.rows) {
-      const { broker, isActive } = resolveActiveBroker(row[0] as string | null);
+      const { broker, isActive } = resolveActiveBroker(roster, row[0] as string | null);
       if (!isActive || broker !== requestedBroker) continue;
       const revenue = row[1] as number;
       const carrierCost = row[2] as number;

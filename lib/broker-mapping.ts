@@ -1,45 +1,50 @@
 /**
  * Broker Mapping Utility
  *
- * Maps all salesRep strings (including multi-rep entries) to one of the
- * 9 active brokers. Support staff and inactive reps are handled separately.
+ * Maps salesRep strings (including multi-rep entries) to an active broker.
+ * The roster is no longer hardcoded here — it comes from the freight-dashboard
+ * feed via lib/roster.ts (getRoster()). These functions are pure and take a
+ * Roster snapshot first, so callers fetch the roster once per request and
+ * thread it through. Mirrors freight-dashboard lib/broker-roster.ts.
  */
 
-const ACTIVE_BROKERS = [
-  "Tom Licata",
-  "James Davison",
-  // Joe Corbett removed from active 2026-07-03 (Jacob) — mirrors freight-dashboard
-  "Drew Ivey",
-  "Grant Morse",
-  "Raphael Jackson",
-  "David Gheran",
-  "Ivan Moya",
-  "Alonzo Hunt",
-  // Hired May 4, 2026
-  "Reggie Pena",
-  "Eric Hedgmon",
-  // Hired Jun 15, 2026
-  "Brett Olgin",
-] as const;
+import type { Roster } from "@/lib/roster";
 
-/**
- * Departed brokers — left the company. Their historical loads still exist
- * in the DB for reporting integrity, but they don't appear on any view
- * (active or inactive) in the dashboard or broker portal.
- */
-const DEPARTED_BROKERS = new Set<string>([
-  "Brian Pollock", // left May 2026
-  "Chase Long", // left June 2026 — removed from all leaderboards
-]);
-
-export function isDeparted(name: string | null | undefined): boolean {
-  if (!name) return false;
-  return DEPARTED_BROKERS.has(name);
+export interface BrokerResolution {
+  broker: string;
+  isActive: boolean;
 }
 
-export type ActiveBroker = (typeof ACTIVE_BROKERS)[number];
+/**
+ * Given a salesRep string (possibly comma-separated), resolve to the
+ * active broker. If multiple active brokers appear, the first one wins.
+ * If no active broker is found, returns the first name with isActive=false.
+ */
+export function resolveActiveBroker(
+  roster: Roster,
+  salesRep: string | null | undefined
+): BrokerResolution {
+  if (!salesRep || salesRep === "null" || salesRep.trim() === "") {
+    return { broker: "Unassigned", isActive: false };
+  }
+  const names = salesRep.split(",").map((n) => n.trim());
+  for (const name of names) {
+    if (roster.byName.get(name)?.active) {
+      return { broker: name, isActive: true };
+    }
+  }
+  return { broker: names[0], isActive: false };
+}
 
-const ACTIVE_SET = new Set<string>(ACTIVE_BROKERS);
+/** Active broker names in displayOrder (nulls last). */
+export function getActiveBrokerNames(roster: Roster): string[] {
+  return [...roster.activeNames];
+}
+
+/** Whether a broker name is currently active. */
+export function isBrokerActive(roster: Roster, name: string): boolean {
+  return roster.byName.get(name)?.active === true;
+}
 
 /**
  * Sales contest exclusions.
@@ -47,7 +52,8 @@ const ACTIVE_SET = new Set<string>(ACTIVE_BROKERS);
  * profit) but doesn't get sales contest credit. Use case: Ivan is the
  * account manager for Cleveland Kitchen (5% commission in TAI) but wasn't
  * the primary sales broker who brought the account in, so it shouldn't
- * count toward the contest.
+ * count toward the contest. This is broker+customer config, not roster
+ * data, so it stays hardcoded here (mirrors freight-dashboard).
  */
 const SALES_CONTEST_EXCLUSIONS: Record<string, string[]> = {
   "Cleveland Kitchen": ["Ivan Moya"],
@@ -64,76 +70,4 @@ export function isSalesContestExcluded(
   if (!broker || !customer) return false;
   const excluded = SALES_CONTEST_EXCLUSIONS[customer];
   return excluded ? excluded.includes(broker) : false;
-}
-
-export interface BrokerResolution {
-  broker: string;
-  isActive: boolean;
-}
-
-/**
- * Given a salesRep string (possibly comma-separated), resolve to the
- * active broker. If multiple active brokers appear, the first one wins.
- * If no active broker is found, returns the original string with isActive=false.
- */
-export function resolveActiveBroker(
-  salesRep: string | null | undefined
-): BrokerResolution {
-  if (!salesRep || salesRep === "null" || salesRep.trim() === "") {
-    return { broker: "Unassigned", isActive: false };
-  }
-
-  // Split by comma and trim
-  const names = salesRep.split(",").map((n) => n.trim());
-
-  // Find the first active broker in the list
-  for (const name of names) {
-    if (ACTIVE_SET.has(name)) {
-      return { broker: name, isActive: true };
-    }
-  }
-
-  // No active broker found — return first name as inactive
-  return { broker: names[0], isActive: false };
-}
-
-/**
- * Get list of all active broker names
- */
-export function getActiveBrokerNames(): string[] {
-  return [...ACTIVE_BROKERS];
-}
-
-/**
- * Check if a broker name is active
- */
-export function isBrokerActive(name: string): boolean {
-  return ACTIVE_SET.has(name);
-}
-
-/**
- * Aggregate load data by resolved broker.
- * Takes raw loads with salesRep strings and groups them by active broker.
- */
-export function aggregateByBroker<
-  T extends { salesRep: string | null; [key: string]: unknown },
->(
-  loads: T[]
-): Map<string, { broker: string; isActive: boolean; loads: T[] }> {
-  const map = new Map<
-    string,
-    { broker: string; isActive: boolean; loads: T[] }
-  >();
-
-  for (const load of loads) {
-    const { broker, isActive } = resolveActiveBroker(load.salesRep);
-    const existing = map.get(broker);
-    if (existing) {
-      existing.loads.push(load);
-    } else {
-      map.set(broker, { broker, isActive, loads: [load] });
-    }
-  }
-
-  return map;
 }

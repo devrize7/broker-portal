@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames } from "@/lib/broker-mapping";
+import { getRoster, getWeeklyGoal } from "@/lib/roster";
 
 export const dynamic = "force-dynamic";
 
@@ -28,41 +29,9 @@ function weekEndKey(mondayKey: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-// ── Weekly goal formula (mirrors freight-dashboard lib/queries.ts) ──────────
-const BROKER_HIRE_DATES: Record<string, string> = {
-  "Tom Licata":       "2025-08-18",
-  // "Joe Corbett":   "2025-03-31" — removed from active 2026-07-03
-  "David Gheran":     "2026-01-19",
-  "James Davison":    "2025-09-29",
-  "Drew Ivey":        "2025-06-02",
-  "Raphael Jackson":  "2026-01-19",
-  "Ivan Moya":        "2026-01-19",
-  "Grant Morse":      "2026-01-05",
-  "Alonzo Hunt":      "2026-03-23",
-  "Reggie Pena":      "2026-05-04",
-  "Eric Hedgmon":     "2026-05-04",
-  "Brett Olgin":      "2026-06-15",
-};
-const NON_EXPERIENCED = new Set([
-  "David Gheran",
-  "Ivan Moya",
-  "Reggie Pena",
-  "Eric Hedgmon",
-]);
-
-function getWeeklyGoal(broker: string, weekMonday: Date): number {
-  const hireStr = BROKER_HIRE_DATES[broker];
-  if (!hireStr) return 0;
-  const hireDate = new Date(hireStr);
-  const totalWeeks = Math.floor(
-    (weekMonday.getTime() - hireDate.getTime()) / (7 * 24 * 60 * 60 * 1000)
-  );
-  const rampWeeks = NON_EXPERIENCED.has(broker) ? 12 : 6;
-  if (totalWeeks < rampWeeks) return 0;
-  const weeksOnGoal = totalWeeks - rampWeeks + 2;
-  const adjustment = broker === "Tom Licata" ? -100 : 0;
-  return Math.max(0, weeksOnGoal * 100 + adjustment);
-}
+// Weekly goal now comes from the roster feed (getWeeklyGoal in lib/roster.ts) —
+// hire dates, ramp weeks and Tom's -100 goalAdjustment live in the dashboard's
+// BrokerProfile table, not in a hardcoded mirror here.
 
 function weekPaceFactor(now: Date): number {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -81,6 +50,7 @@ function weekPaceFactor(now: Date): number {
 
 export async function GET(request: NextRequest) {
   try {
+    const roster = await getRoster();
     const now = new Date();
     const thisMonday = getMondayOf(now);
     const thisMondayKey = thisMonday.toISOString().slice(0, 10);
@@ -112,7 +82,7 @@ export async function GET(request: NextRequest) {
       args: [fourWeeksBeforeTarget.toISOString(), fourWeeksBeforeTarget.toISOString().slice(0, 10)],
     });
 
-    const activeBrokers = getActiveBrokerNames();
+    const activeBrokers = getActiveBrokerNames(roster);
 
     // Parse all loads
     const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
@@ -168,7 +138,7 @@ export async function GET(request: NextRequest) {
     // Rolling avg: broker -> weekKey -> stats
     const weeklyByBroker: Record<string, Record<string, { loads: number; margin: number }>> = {};
     for (const l of priorWeeksLoads) {
-      const { broker, isActive } = resolveActiveBroker(l.salesRep);
+      const { broker, isActive } = resolveActiveBroker(roster, l.salesRep);
       if (!isActive) continue;
       const weekMon = l.profWeek || getMondayOf(new Date(l.pickupDate)).toISOString().slice(0, 10);
       if (!weeklyByBroker[broker]) weeklyByBroker[broker] = {};
@@ -180,7 +150,7 @@ export async function GET(request: NextRequest) {
     // Target week per broker
     const currentByBroker: Record<string, { loads: number; revenue: number; margin: number }> = {};
     for (const l of targetWeekLoads) {
-      const { broker, isActive } = resolveActiveBroker(l.salesRep);
+      const { broker, isActive } = resolveActiveBroker(roster, l.salesRep);
       if (!isActive) continue;
       if (!currentByBroker[broker]) currentByBroker[broker] = { loads: 0, revenue: 0, margin: 0 };
       currentByBroker[broker].loads += 1;
@@ -198,7 +168,7 @@ export async function GET(request: NextRequest) {
     for (const r of recRes.rows) { const pw = r[4] as string | null; if (pw) recProfWeeks.add(pw); }
     const recByBroker: Record<string, Record<string, number>> = {};
     for (const r of recRes.rows) {
-      const { broker, isActive } = resolveActiveBroker(r[0] as string | null);
+      const { broker, isActive } = resolveActiveBroker(roster, r[0] as string | null);
       if (!isActive) continue;
       const revenue = Number(r[1]) || 0;
       const carrierCost = Number(r[2]) || 0;
@@ -226,7 +196,7 @@ export async function GET(request: NextRequest) {
 
     const rows = activeBrokers.map((broker) => {
       const cur = currentByBroker[broker] || { loads: 0, revenue: 0, margin: 0 };
-      const weeklyGoal = getWeeklyGoal(broker, targetMonday);
+      const weeklyGoal = getWeeklyGoal(roster, broker, targetMonday);
 
       // Last 4 completed weeks (OATH-60): divide by the number of those 4 weeks
       // on/after the broker's hire week (capped at 4, min 1) — completed $0 weeks
@@ -235,9 +205,9 @@ export async function GET(request: NextRequest) {
       const brokerWeeks = Object.values(weeklyByBroker[broker] || {});
       const totalMargin = brokerWeeks.reduce((s, w) => s + w.margin, 0);
       const totalLoads = brokerWeeks.reduce((s, w) => s + w.loads, 0);
-      // hireStr is already a YYYY-MM-DD calendar date; compare directly (no
+      // hireDate is already a YYYY-MM-DD calendar date; compare directly (no
       // getMondayOf, which would shift it into the prior ET week).
-      const hireStr = BROKER_HIRE_DATES[broker];
+      const hireStr = roster.byName.get(broker)?.hireDate ?? null;
       let eligibleWeeks = 4;
       if (hireStr) {
         eligibleWeeks = completedWeekKeys.filter((k) => weekEndKey(k) >= hireStr).length;

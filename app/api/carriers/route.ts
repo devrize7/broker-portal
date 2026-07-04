@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { cityToCoords } from "@/lib/city-coords";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
+import { getRoster } from "@/lib/roster";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,7 @@ const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
 
 export async function GET(req: NextRequest) {
   try {
+    const roster = await getRoster();
     const { searchParams } = new URL(req.url);
     const weeks = parseInt(searchParams.get("weeks") || "12", 10);
 
@@ -34,7 +36,7 @@ export async function GET(req: NextRequest) {
       if (revenue === 0 && carrierCost === 0) return null;
 
       // Resolve broker mapping
-      const { broker, isActive } = resolveActiveBroker(salesRep);
+      const { broker, isActive } = resolveActiveBroker(roster, salesRep);
       if (!isActive) return null;
 
       const originCoords = cityToCoords(origin);
