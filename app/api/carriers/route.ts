@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { cityToCoords } from "@/lib/city-coords";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
+import { EXCLUDED_STATUSES } from "@/lib/load-status";
 
 export const dynamic = "force-dynamic";
-
-const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,11 +14,11 @@ export async function GET(req: NextRequest) {
     const since = new Date();
     since.setDate(since.getDate() - weeks * 7);
 
-    const excluded = EXCLUDED.map(() => "?").join(",");
+    const excluded = EXCLUDED_STATUSES.map(() => "?").join(",");
     const result = await db.execute({
       sql: `SELECT loadNumber, origin, destination, carrier, salesRep, revenue, carrierCost, pickupDate, status
             FROM Load WHERE pickupDate >= ? AND status NOT IN (${excluded}) ORDER BY pickupDate DESC`,
-      args: [since.toISOString(), ...EXCLUDED],
+      args: [since.toISOString(), ...EXCLUDED_STATUSES],
     });
 
     const lanes = result.rows.map((r) => {

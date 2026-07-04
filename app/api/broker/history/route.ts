@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
+import { EXCLUDED_STATUSES } from "@/lib/load-status";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +22,6 @@ function getMondayOf(date: Date): Date {
   d.setHours(0, 0, 0, 0);
   return d;
 }
-
-const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
 
 const BROKER_HIRE_DATES: Record<string, string> = {
   "Tom Licata":       "2025-08-18",
@@ -80,13 +79,13 @@ export async function GET(req: NextRequest) {
     const since = new Date(thisMonday);
     since.setDate(since.getDate() - weeks * 7);
 
-    const excluded = EXCLUDED.map(() => "?").join(",");
+    const excluded = EXCLUDED_STATUSES.map(() => "?").join(",");
     const result = await db.execute({
       sql: `SELECT salesRep, revenue, carrierCost, pickupDate, origin, destination, carrier, profWeek
             FROM Load
             WHERE (pickupDate >= ? OR profWeek >= ?) AND status NOT IN (${excluded})
             ORDER BY pickupDate ASC`,
-      args: [since.toISOString(), since.toISOString().slice(0, 10), ...EXCLUDED],
+      args: [since.toISOString(), since.toISOString().slice(0, 10), ...EXCLUDED_STATUSES],
     });
 
     // Build set of weeks with profWeek-tagged data
@@ -174,7 +173,7 @@ export async function GET(req: NextRequest) {
     // week is excluded (a partial week can't be a record).
     const recRes = await db.execute({
       sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek FROM Load WHERE status NOT IN (${excluded})`,
-      args: [...EXCLUDED],
+      args: [...EXCLUDED_STATUSES],
     });
     const recProfWeeks = new Set<string>();
     for (const row of recRes.rows) { const pw = row[4] as string | null; if (pw) recProfWeeks.add(pw); }

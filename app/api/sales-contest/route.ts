@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames, isSalesContestExcluded } from "@/lib/broker-mapping";
+import { EXCLUDED_STATUSES } from "@/lib/load-status";
 
 export const dynamic = "force-dynamic";
 
 const CONTEST_START = "2026-02-20";
-const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
 
 export async function GET() {
   try {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
+import { EXCLUDED_STATUSES } from "@/lib/load-status";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +43,6 @@ async function lookupDot(carrierName: string): Promise<string | null> {
   }
 }
 
-const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ name: string }> }
@@ -58,13 +57,13 @@ export async function GET(
     const since = new Date(thisMonday);
     since.setDate(since.getDate() - weeks * 7);
 
-    const excluded = EXCLUDED.map(() => "?").join(",");
+    const excluded = EXCLUDED_STATUSES.map(() => "?").join(",");
     const result = await db.execute({
       sql: `SELECT salesRep, revenue, carrierCost, pickupDate, origin, destination, carrier, loadNumber, profWeek
             FROM Load
             WHERE carrier = ? AND (pickupDate >= ? OR profWeek >= ?) AND status NOT IN (${excluded})
             ORDER BY pickupDate DESC`,
-      args: [carrierName, since.toISOString(), since.toISOString().slice(0, 10), ...EXCLUDED],
+      args: [carrierName, since.toISOString(), since.toISOString().slice(0, 10), ...EXCLUDED_STATUSES],
     });
 
     // Weeks that have profWeek data (source of truth for weekly grouping)
