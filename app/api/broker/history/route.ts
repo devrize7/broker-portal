@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
 import { getRoster, getWeeklyGoal } from "@/lib/roster";
+import { trueMargin, trueRevenue } from "@/lib/margin";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
 
     const excluded = EXCLUDED.map(() => "?").join(",");
     const result = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, origin, destination, carrier, profWeek
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, origin, destination, carrier, profWeek, lumperRevenue, lumperCost
             FROM Load
             WHERE (pickupDate >= ? OR profWeek >= ?) AND status NOT IN (${excluded})
             ORDER BY pickupDate ASC`,
@@ -80,7 +81,9 @@ export async function GET(req: NextRequest) {
       const carrierCost = row[2] as number;
       // Skip $0/$0 phantom loads
       if (revenue === 0 && carrierCost === 0) continue;
-      const margin = revenue - carrierCost;
+      const lumperRevenue = Number(row[8]) || 0;
+      const lumperCost = Number(row[9]) || 0;
+      const margin = trueMargin(revenue, carrierCost, lumperRevenue, lumperCost);
       const pickupDate = row[3] as string;
       const origin = row[4] as string;
       const destination = row[5] as string;
@@ -102,7 +105,7 @@ export async function GET(req: NextRequest) {
         weekMap[weekKey] = { loads: 0, revenue: 0, margin: 0, weekMonday: weekMon };
       }
       weekMap[weekKey].loads += 1;
-      weekMap[weekKey].revenue += revenue;
+      weekMap[weekKey].revenue += trueRevenue(revenue, lumperRevenue);
       weekMap[weekKey].margin += margin;
 
       const laneKey = `${origin} → ${destination}`;
@@ -143,7 +146,7 @@ export async function GET(req: NextRequest) {
     // the broker's whole tenure, not just the 8/12/26-week view. The in-progress
     // week is excluded (a partial week can't be a record).
     const recRes = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek FROM Load WHERE status NOT IN (${excluded})`,
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, lumperRevenue, lumperCost FROM Load WHERE status NOT IN (${excluded})`,
       args: [...EXCLUDED],
     });
     const recProfWeeks = new Set<string>();
@@ -160,7 +163,7 @@ export async function GET(req: NextRequest) {
       if (profWeek) weekKey = profWeek;
       else { weekKey = getMondayOf(new Date(row[3] as string)).toISOString().slice(0, 10); if (recProfWeeks.has(weekKey)) continue; }
       if (!recWeekMap[weekKey]) recWeekMap[weekKey] = { margin: 0, loads: 0 };
-      recWeekMap[weekKey].margin += revenue - carrierCost;
+      recWeekMap[weekKey].margin += trueMargin(revenue, carrierCost, Number(row[5]) || 0, Number(row[6]) || 0);
       recWeekMap[weekKey].loads += 1;
     }
     const thisMondayKey = thisMonday.toISOString().slice(0, 10);
