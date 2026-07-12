@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames } from "@/lib/broker-mapping";
 import { getRoster, getWeeklyGoal } from "@/lib/roster";
+import { trueMargin, trueRevenue } from "@/lib/margin";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
     }
 
     const loadsResult = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status FROM Load WHERE pickupDate >= ? OR profWeek >= ?`,
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost FROM Load WHERE pickupDate >= ? OR profWeek >= ?`,
       args: [fourWeeksBeforeTarget.toISOString(), fourWeeksBeforeTarget.toISOString().slice(0, 10)],
     });
 
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
 
     // Parse all loads
     const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
-    interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null; status: string | null }
+    interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null; status: string | null; lumperRevenue: number; lumperCost: number }
     const allLoads: LoadRow[] = loadsResult.rows.map((row) => ({
       salesRep: row[0] as string | null,
       revenue: Number(row[1]) || 0,
@@ -94,6 +95,8 @@ export async function GET(request: NextRequest) {
       pickupDate: row[3] as string,
       profWeek: row[4] as string | null,
       status: row[5] as string | null,
+      lumperRevenue: Number(row[6]) || 0,
+      lumperCost: Number(row[7]) || 0,
     }));
 
     // Target week loads: use profWeek as source of truth
@@ -144,7 +147,7 @@ export async function GET(request: NextRequest) {
       if (!weeklyByBroker[broker]) weeklyByBroker[broker] = {};
       if (!weeklyByBroker[broker][weekMon]) weeklyByBroker[broker][weekMon] = { loads: 0, margin: 0 };
       weeklyByBroker[broker][weekMon].loads += 1;
-      weeklyByBroker[broker][weekMon].margin += l.revenue - l.carrierCost;
+      weeklyByBroker[broker][weekMon].margin += trueMargin(l.revenue, l.carrierCost, l.lumperRevenue, l.lumperCost);
     }
 
     // Target week per broker
@@ -154,15 +157,15 @@ export async function GET(request: NextRequest) {
       if (!isActive) continue;
       if (!currentByBroker[broker]) currentByBroker[broker] = { loads: 0, revenue: 0, margin: 0 };
       currentByBroker[broker].loads += 1;
-      currentByBroker[broker].revenue += l.revenue;
-      currentByBroker[broker].margin += l.revenue - l.carrierCost;
+      currentByBroker[broker].revenue += trueRevenue(l.revenue, l.lumperRevenue);
+      currentByBroker[broker].margin += trueMargin(l.revenue, l.carrierCost, l.lumperRevenue, l.lumperCost);
     }
 
     // ── All-time RECORD WEEK per broker (best completed week by margin) ───────
     // Matches the command-center scorecard. The windowed fetch above is only 4
     // weeks, so this is a separate all-loads query; the in-progress week is excluded.
     const recRes = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status FROM Load`,
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost FROM Load`,
     });
     const recProfWeeks = new Set<string>();
     for (const r of recRes.rows) { const pw = r[4] as string | null; if (pw) recProfWeeks.add(pw); }
@@ -182,7 +185,7 @@ export async function GET(request: NextRequest) {
         if (recProfWeeks.has(wk)) continue; // profWeek is source of truth
       }
       if (!recByBroker[broker]) recByBroker[broker] = {};
-      recByBroker[broker][wk] = (recByBroker[broker][wk] || 0) + (revenue - carrierCost);
+      recByBroker[broker][wk] = (recByBroker[broker][wk] || 0) + trueMargin(revenue, carrierCost, Number(r[6]) || 0, Number(r[7]) || 0);
     }
     const brokerRecords: Record<string, { amount: number; weekOf: string }> = {};
     for (const [broker, weeks] of Object.entries(recByBroker)) {

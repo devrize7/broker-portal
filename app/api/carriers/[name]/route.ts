@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
 import { getRoster } from "@/lib/roster";
+import { trueMargin } from "@/lib/margin";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,7 @@ export async function GET(
 
     const excluded = EXCLUDED.map(() => "?").join(",");
     const result = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, origin, destination, carrier, loadNumber, profWeek
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, origin, destination, carrier, loadNumber, profWeek, lumperRevenue, lumperCost
             FROM Load
             WHERE carrier = ? AND (pickupDate >= ? OR profWeek >= ?) AND status NOT IN (${excluded})
             ORDER BY pickupDate DESC`,
@@ -90,7 +91,7 @@ export async function GET(
       const carrierCost = Number(row[2]) || 0;
       if (revenue === 0 && carrierCost === 0) continue;
 
-      const margin = revenue - carrierCost;
+      const margin = trueMargin(revenue, carrierCost, Number(row[9]) || 0, Number(row[10]) || 0);
       const pickupDate = row[3] as string;
       const origin = (row[4] as string) || "";
       const destination = (row[5] as string) || "";

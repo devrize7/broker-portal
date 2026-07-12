@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { cityToCoords } from "@/lib/city-coords";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
 import { getRoster } from "@/lib/roster";
+import { trueMargin } from "@/lib/margin";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
 
     const excluded = EXCLUDED.map(() => "?").join(",");
     const result = await db.execute({
-      sql: `SELECT loadNumber, origin, destination, carrier, salesRep, revenue, carrierCost, pickupDate, status
+      sql: `SELECT loadNumber, origin, destination, carrier, salesRep, revenue, carrierCost, pickupDate, status, lumperRevenue, lumperCost
             FROM Load WHERE pickupDate >= ? AND status NOT IN (${excluded}) ORDER BY pickupDate DESC`,
       args: [since.toISOString(), ...EXCLUDED],
     });
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
         destCoords,
         revenue,
         carrierCost,
-        margin: revenue - carrierCost,
+        margin: trueMargin(revenue, carrierCost, Number(r[9]) || 0, Number(r[10]) || 0),
         pickupDate: r[7] as string,
         status: r[8] as string,
       };

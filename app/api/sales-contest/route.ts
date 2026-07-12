@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames, isSalesContestExcluded } from "@/lib/broker-mapping";
 import { getRoster } from "@/lib/roster";
+import { trueMargin, trueRevenue } from "@/lib/margin";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function GET() {
     // Run both queries concurrently
     const [contestResult, preContestResult] = await Promise.all([
       db.execute({
-        sql: `SELECT salesRep, customer, revenue, (revenue - carrierCost) as margin, pickupDate, status
+        sql: `SELECT salesRep, customer, revenue, carrierCost, lumperRevenue, lumperCost, pickupDate, status
               FROM Load WHERE pickupDate >= ? AND customer IS NOT NULL`,
         args: [CONTEST_START],
       }),
@@ -37,9 +38,12 @@ export async function GET() {
       const status = (row.status as string || "").toLowerCase();
       if (EXCLUDED_STATUSES.includes(status)) continue;
 
-      const revenue = Number(row.revenue) || 0;
-      const margin = Number(row.margin) || 0;
-      if (revenue === 0 && margin === 0) continue;
+      const revenueRaw = Number(row.revenue) || 0;
+      const carrierCost = Number(row.carrierCost) || 0;
+      if (revenueRaw === 0 && carrierCost === 0) continue;
+      // Lumper pass-through netted out (see lib/margin.ts).
+      const margin = trueMargin(revenueRaw, carrierCost, Number(row.lumperRevenue) || 0, Number(row.lumperCost) || 0);
+      const revenue = trueRevenue(revenueRaw, Number(row.lumperRevenue) || 0);
 
       const salesRep = row.salesRep as string;
       const customer = row.customer as string;
