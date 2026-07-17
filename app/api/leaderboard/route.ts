@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/route-auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames } from "@/lib/broker-mapping";
 import { getRoster, getWeeklyGoal } from "@/lib/roster";
@@ -50,6 +51,9 @@ function weekPaceFactor(now: Date): number {
 }
 
 export async function GET(request: NextRequest) {
+  const { session, response } = await requireSession();
+  if (!session) return response;
+
   try {
     const roster = await getRoster();
     const now = new Date();

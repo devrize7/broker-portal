@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/route-auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
 import { getRoster } from "@/lib/roster";
@@ -50,6 +51,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ name: string }> }
 ) {
+  const { session, response } = await requireSession();
+  if (!session) return response;
+
   const { name } = await params;
   const carrierName = decodeURIComponent(name);
   const weeks = Math.min(parseInt(req.nextUrl.searchParams.get("weeks") ?? "12", 10), 52);

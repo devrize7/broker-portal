@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/route-auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames, isSalesContestExcluded } from "@/lib/broker-mapping";
 import { getRoster } from "@/lib/roster";
@@ -10,6 +11,9 @@ const CONTEST_START = "2026-02-20";
 const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
 
 export async function GET() {
+  const { session, response } = await requireSession();
+  if (!session) return response;
+
   try {
     const roster = await getRoster();
     const activeBrokers = getActiveBrokerNames(roster);

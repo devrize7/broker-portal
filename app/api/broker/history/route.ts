@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/route-auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
 import { getRoster, getWeeklyGoal } from "@/lib/roster";
@@ -30,10 +30,8 @@ const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
 // getWeeklyGoal in lib/roster.ts. No hardcoded mirror here.
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, response } = await requireSession();
+  if (!session) return response;
 
   const user = session.user as { brokerName?: string | null; isAdmin?: boolean };
   const requestedBroker = req.nextUrl.searchParams.get("broker");
