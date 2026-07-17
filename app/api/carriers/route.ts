@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/route-auth";
 import { db } from "@/lib/db";
 import { cityToCoords } from "@/lib/city-coords";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
@@ -10,6 +11,9 @@ export const dynamic = "force-dynamic";
 const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
 
 export async function GET(req: NextRequest) {
+  const { session, response } = await requireSession();
+  if (!session) return response;
+
   try {
     const roster = await getRoster();
     const { searchParams } = new URL(req.url);
