@@ -9,6 +9,8 @@ import { ArrowLeft, Search, ChevronUp, ChevronDown, Flame, Trophy } from "lucide
 interface BrokerRow {
   broker: string;
   weeklyGoal: number;
+  ramping: boolean;
+  rampWeeksLeft: number;
   current: { loads: number; revenue: number; margin: number; avgPerLoad: number; marginPct: number };
   rolling4wAvg: { loads: number; margin: number };
   goalPct: number | null;
@@ -167,7 +169,11 @@ export default function LeaderboardPage() {
   const idleRows = (data?.brokers.filter((b) => b.current.loads === 0) ?? [])
     .filter((b) => !query || b.broker.toLowerCase().includes(query));
 
-  const sortedActive = sortBrokers(activeRows, sortKey, sortDir);
+  // Every active broker gets a row, loads or not — a $0 week is information,
+  // and a ramping broker still needs to see the goal they're working toward.
+  // No-load brokers are pinned below the producers whatever the sort: this is a
+  // leaderboard, so an ascending sort must not bury the leaders under zeros.
+  const sortedActive = [...sortBrokers(activeRows, sortKey, sortDir), ...idleRows];
 
   const totals = (data?.brokers.filter((b) => b.current.loads > 0) ?? []).reduce(
     (acc, b) => ({ loads: acc.loads + b.current.loads, revenue: acc.revenue + b.current.revenue, margin: acc.margin + b.current.margin }),
@@ -334,7 +340,7 @@ export default function LeaderboardPage() {
               Loading…
             </div>
           </div>
-        ) : sortedActive.length === 0 && idleRows.length === 0 ? (
+        ) : sortedActive.length === 0 ? (
           <div className="flex items-center justify-center h-64 text-slate-600">
             No brokers match &ldquo;{search}&rdquo;
           </div>
@@ -373,7 +379,8 @@ export default function LeaderboardPage() {
                 </thead>
                 <tbody>
                   {sortedActive.map((b, i) => {
-                    const isTop3 = sortKey === "margin" && sortDir === "desc" && i < 3;
+                    const idle = b.current.loads === 0;
+                    const isTop3 = !idle && sortKey === "margin" && sortDir === "desc" && i < 3;
                     const goalBarWidth = b.goalPct !== null ? Math.min(b.goalPct, 100) : 0;
                     const goalColor = (b.goalPct ?? 0) >= 100 ? "bg-emerald-400"
                       : (b.goalPct ?? 0) >= 70 ? "bg-yellow-400"
@@ -392,44 +399,66 @@ export default function LeaderboardPage() {
                         </td>
                         <td className="py-4 pr-4">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`font-bold whitespace-nowrap ${isTop3 ? "text-xl text-white" : "text-lg text-slate-200"}`}>
+                            <span className={`font-bold whitespace-nowrap ${
+                              idle ? "text-lg text-slate-500"
+                                : isTop3 ? "text-xl text-white"
+                                : "text-lg text-slate-200"
+                            }`}>
                               {b.broker}
                             </span>
-                            <PaceChip status={b.paceStatus} />
+                            {!idle && <PaceChip status={b.paceStatus} />}
                           </div>
                         </td>
                         <td className="py-4 px-3 text-right">
-                          <span className={`font-bold tabular-nums ${isTop3 ? "text-xl text-white" : "text-lg text-slate-300"}`}>
+                          <span className={`font-bold tabular-nums ${
+                            idle ? "text-lg text-slate-600"
+                              : isTop3 ? "text-xl text-white"
+                              : "text-lg text-slate-300"
+                          }`}>
                             {b.current.loads}
                           </span>
                         </td>
                         <td className="py-4 px-3 text-right">
-                          <span className={`tabular-nums ${isTop3 ? "text-lg text-slate-200" : "text-base text-slate-400"}`}>
+                          <span className={`tabular-nums ${
+                            idle ? "text-base text-slate-600"
+                              : isTop3 ? "text-lg text-slate-200"
+                              : "text-base text-slate-400"
+                          }`}>
                             {fmt(b.current.revenue)}
                           </span>
                         </td>
                         <td className="py-4 px-3 text-right">
                           <span className={`font-bold tabular-nums ${
-                            b.current.margin >= 0
+                            idle ? "text-lg text-slate-600"
+                              : b.current.margin >= 0
                               ? isTop3 ? "text-xl text-emerald-400" : "text-lg text-emerald-500"
                               : "text-lg text-red-400"
                           }`}>
                             {fmt(b.current.margin, 2)}
                           </span>
                         </td>
+                        {/* A no-load week has no percentage — not a 0.0% one */}
                         <td className="py-4 px-3 text-right">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                            b.current.marginPct >= 10 ? "bg-emerald-900/50 text-emerald-300"
-                              : b.current.marginPct >= 5 ? "bg-yellow-900/50 text-yellow-300"
-                              : "bg-red-900/50 text-red-300"
-                          }`}>
-                            {b.current.marginPct.toFixed(1)}%
-                          </span>
+                          {idle ? (
+                            <span className="text-slate-700 text-sm">—</span>
+                          ) : (
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              b.current.marginPct >= 10 ? "bg-emerald-900/50 text-emerald-300"
+                                : b.current.marginPct >= 5 ? "bg-yellow-900/50 text-yellow-300"
+                                : "bg-red-900/50 text-red-300"
+                            }`}>
+                              {b.current.marginPct.toFixed(1)}%
+                            </span>
+                          )}
                         </td>
                         <td className="py-4 px-3 text-right">
-                          <span className={`tabular-nums ${isTop3 ? "text-lg text-slate-200" : "text-base text-slate-400"}`}>
-                            {fmt(b.current.avgPerLoad, 2)}
-                          </span>
+                          {idle ? (
+                            <span className="text-slate-700 text-sm">—</span>
+                          ) : (
+                            <span className={`tabular-nums ${isTop3 ? "text-lg text-slate-200" : "text-base text-slate-400"}`}>
+                              {fmt(b.current.avgPerLoad, 2)}
+                            </span>
+                          )}
                         </td>
                         <td className="py-4 px-3 text-right border-l border-white/[0.06]">
                           <span className="text-base text-slate-500 tabular-nums">
@@ -457,6 +486,19 @@ export default function LeaderboardPage() {
                               </div>
                               <p className="text-xs text-white/70 mt-1.5 text-right">goal: {fmt(b.weeklyGoal)}</p>
                             </div>
+                          ) : idle ? (
+                            /* No loads yet — a full green "100%" bar would be a lie.
+                               Say where they are in the ramp instead. */
+                            <div className="min-w-[180px]">
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-sky-900/40 text-sky-300 border-sky-700/40">
+                                Ramping
+                              </span>
+                              <p className="text-xs text-slate-600 mt-1.5">
+                                {b.ramping
+                                  ? `Goal starts in ${b.rampWeeksLeft} ${b.rampWeeksLeft === 1 ? "wk" : "wks"}`
+                                  : "No goal set"}
+                              </p>
+                            </div>
                           ) : (
                             <div className="min-w-[180px]">
                               <div className="flex justify-between items-baseline mb-1.5">
@@ -466,7 +508,9 @@ export default function LeaderboardPage() {
                               <div className="h-3 bg-white/[0.08] rounded-full overflow-hidden">
                                 <div className="h-full w-full rounded-full bg-emerald-400 transition-all duration-700" />
                               </div>
-                              <p className="text-xs text-white/70 mt-1.5 text-right">ramping up</p>
+                              <p className="text-xs text-white/70 mt-1.5 text-right">
+                                {b.ramping ? `ramping up · goal in ${b.rampWeeksLeft} ${b.rampWeeksLeft === 1 ? "wk" : "wks"}` : "ramping up"}
+                              </p>
                             </div>
                           )}
                         </td>
@@ -489,7 +533,8 @@ export default function LeaderboardPage() {
             {/* ── Mobile card list ── */}
             <div className="md:hidden space-y-2">
               {sortedActive.map((b, i) => {
-                const isTop3 = sortKey === "margin" && sortDir === "desc" && i < 3;
+                const idle = b.current.loads === 0;
+                const isTop3 = !idle && sortKey === "margin" && sortDir === "desc" && i < 3;
                 const goalBarWidth = b.goalPct !== null ? Math.min(b.goalPct, 100) : 0;
                 const goalColor = (b.goalPct ?? 0) >= 100 ? "bg-emerald-400"
                   : (b.goalPct ?? 0) >= 70 ? "bg-yellow-400"
@@ -507,8 +552,8 @@ export default function LeaderboardPage() {
                           ? <span className="text-2xl">{MEDALS[i]}</span>
                           : <span className="text-slate-600 text-sm font-mono w-5">{i + 1}</span>
                         }
-                        <span className="font-bold text-white text-base">{b.broker}</span>
-                        <PaceChip status={b.paceStatus} />
+                        <span className={`font-bold text-base ${idle ? "text-slate-500" : "text-white"}`}>{b.broker}</span>
+                        {!idle && <PaceChip status={b.paceStatus} />}
                       </div>
                     </div>
 
@@ -516,7 +561,9 @@ export default function LeaderboardPage() {
                     <div className="grid grid-cols-3 gap-3 mb-3">
                       <div>
                         <p className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">Margin</p>
-                        <p className={`font-bold tabular-nums text-base ${b.current.margin >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        <p className={`font-bold tabular-nums text-base ${
+                          idle ? "text-slate-600" : b.current.margin >= 0 ? "text-emerald-400" : "text-red-400"
+                        }`}>
                           {fmt(b.current.margin)}
                         </p>
                       </div>
@@ -547,10 +594,23 @@ export default function LeaderboardPage() {
                           <div className={`h-full rounded-full transition-all duration-700 ${goalColor}`} style={{ width: `${goalBarWidth}%` }} />
                         </div>
                       </div>
+                    ) : idle ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-sky-900/40 text-sky-300 border-sky-700/40">
+                          Ramping
+                        </span>
+                        <span className="text-xs text-slate-600">
+                          {b.ramping
+                            ? `Goal starts in ${b.rampWeeksLeft} ${b.rampWeeksLeft === 1 ? "wk" : "wks"}`
+                            : "No goal set"}
+                        </span>
+                      </div>
                     ) : (
                       <div>
                         <div className="flex justify-between items-baseline mb-1">
-                          <span className="text-xs text-slate-500">Ramping up</span>
+                          <span className="text-xs text-slate-500">
+                            {b.ramping ? `Ramping up · goal in ${b.rampWeeksLeft} ${b.rampWeeksLeft === 1 ? "wk" : "wks"}` : "Ramping up"}
+                          </span>
                           <span className="text-xs font-bold text-emerald-400">100%</span>
                         </div>
                         <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
@@ -572,22 +632,6 @@ export default function LeaderboardPage() {
               })}
             </div>
 
-            {/* Idle brokers */}
-            {idleRows.length > 0 && (
-              <div className="mt-6 border-t border-white/[0.05] pt-4">
-                <p className="text-xs text-slate-700 uppercase tracking-widest mb-3">No loads yet this week</p>
-                <div className="flex flex-wrap gap-3">
-                  {idleRows.map((b) => (
-                    <div key={b.broker} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05]">
-                      <span className="text-sm text-slate-600 font-medium">{b.broker}</span>
-                      {b.weeklyGoal > 0 && (
-                        <span className="text-xs text-slate-700">Goal: {fmt(b.weeklyGoal)}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>

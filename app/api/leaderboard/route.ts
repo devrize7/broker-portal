@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/route-auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames } from "@/lib/broker-mapping";
-import { getRoster, getWeeklyGoal } from "@/lib/roster";
+import { getRoster, getWeeklyGoal, getRampStatus } from "@/lib/roster";
 import { trueMargin, trueRevenue } from "@/lib/margin";
 
 export const dynamic = "force-dynamic";
@@ -230,9 +230,13 @@ export async function GET(request: NextRequest) {
           : cur.margin >= pacedGoal * 0.85 ? "on_pace"
           : "behind";
 
+      const ramp = getRampStatus(roster, broker, targetMonday);
+
       return {
         broker,
         weeklyGoal,
+        ramping: ramp.ramping,
+        rampWeeksLeft: ramp.ramping ? ramp.rampWeeks - ramp.weeksIn : 0,
         current: {
           loads: cur.loads,
           revenue: cur.revenue,

@@ -4,6 +4,7 @@ import {
   buildRoster,
   parseFeedBroker,
   getWeeklyGoal,
+  getRampStatus,
   getRoster,
   _resetRosterCache,
   type RosterBroker,
@@ -100,6 +101,40 @@ describe("getWeeklyGoal (mirrors freight-dashboard weeklyGoal)", () => {
 
   it("returns 0 for an unknown broker or one with no hire date", () => {
     expect(getWeeklyGoal(roster, "Nobody", monday("2026-07-06"))).toBe(0);
+  });
+});
+
+// getRampStatus shares getWeeklyGoal's weeks-since-hire math so the leaderboard's
+// "goal starts in N wks" can never contradict the $0 goal it explains.
+describe("getRampStatus", () => {
+  const roster = buildRoster(SEED_BROKERS);
+  const monday = (d: string) => new Date(d + "T00:00:00Z");
+
+  it("reports ramping with weeks remaining inside the window", () => {
+    // Reggie Pena hired 2026-05-04, 12-week ramp.
+    const r = getRampStatus(roster, "Reggie Pena", monday("2026-06-01"));
+    expect(r.ramping).toBe(true);
+    expect(r.rampWeeks).toBe(12);
+    expect(r.weeksIn).toBe(4);
+    expect(r.rampWeeks - r.weeksIn).toBe(8);
+  });
+
+  it("is not ramping well past the window", () => {
+    expect(getRampStatus(roster, "Tom Licata", monday("2026-07-06")).ramping).toBe(false);
+  });
+
+  it("unknown broker → not ramping (matches getWeeklyGoal's 0 bail-out)", () => {
+    expect(getRampStatus(roster, "Nobody", monday("2026-07-06")).ramping).toBe(false);
+  });
+
+  it("ramping implies a $0 goal for every seeded broker across a spread of weeks", () => {
+    for (const wk of ["2026-01-05", "2026-04-06", "2026-07-06", "2026-09-07"]) {
+      for (const name of roster.byName.keys()) {
+        if (getRampStatus(roster, name, monday(wk)).ramping) {
+          expect(getWeeklyGoal(roster, name, monday(wk))).toBe(0);
+        }
+      }
+    }
   });
 });
 
