@@ -231,12 +231,24 @@ export async function GET(request: NextRequest) {
           : "behind";
 
       const ramp = getRampStatus(roster, broker, targetMonday);
+      const rampWeeksLeft = ramp.ramping ? ramp.rampWeeks - ramp.weeksIn : 0;
+      // The goal turns on the Monday `rampWeeksLeft` weeks after this one (each
+      // Monday advances totalWeeks by 1). Formatted like targetMondayKey/weekStart
+      // (toISOString slice) so it lines up with the rest of the route's date keys.
+      // Brokers always start Mondays.
+      let goalStartDate: string | null = null;
+      if (ramp.ramping) {
+        const gs = new Date(targetMonday);
+        gs.setDate(gs.getDate() + rampWeeksLeft * 7);
+        goalStartDate = gs.toISOString().slice(0, 10);
+      }
 
       return {
         broker,
         weeklyGoal,
         ramping: ramp.ramping,
-        rampWeeksLeft: ramp.ramping ? ramp.rampWeeks - ramp.weeksIn : 0,
+        rampWeeksLeft,
+        goalStartDate,
         current: {
           loads: cur.loads,
           revenue: cur.revenue,
