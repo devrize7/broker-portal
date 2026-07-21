@@ -216,12 +216,32 @@ export function _resetRosterCache(): void {
 export function getWeeklyGoal(roster: Roster, broker: string, weekMonday: Date): number {
   const b = roster.byName.get(broker);
   if (!b?.hireDate) return 0;
+  const { weeksIn, rampWeeks, ramping } = getRampStatus(roster, broker, weekMonday);
+  if (ramping) return 0;
+  const weeksOnGoal = weeksIn - rampWeeks + 2;
+  return Math.max(0, weeksOnGoal * 100 + b.goalAdjustment);
+}
+
+/**
+ * How far into their ramp a broker is for the given week. `ramping` means the
+ * broker has no goal YET — distinct from a $0 goal they failed to earn, which
+ * matters when a leaderboard row has to explain an empty goal bar. Shares
+ * getWeeklyGoal's weeks-since-hire math so the two can never disagree.
+ * No/invalid hire date (or unknown broker) ⇒ not ramping — matches
+ * getWeeklyGoal's "return 0" bail-outs.
+ */
+export function getRampStatus(
+  roster: Roster,
+  broker: string,
+  weekMonday: Date
+): { weeksIn: number; rampWeeks: number; ramping: boolean } {
+  const b = roster.byName.get(broker);
+  const rampWeeks = b?.rampWeeks ?? 0;
+  if (!b?.hireDate) return { weeksIn: 0, rampWeeks, ramping: false };
   const hireDate = new Date(b.hireDate);
-  if (isNaN(hireDate.getTime())) return 0;
-  const totalWeeks = Math.floor(
+  if (isNaN(hireDate.getTime())) return { weeksIn: 0, rampWeeks, ramping: false };
+  const weeksIn = Math.floor(
     (weekMonday.getTime() - hireDate.getTime()) / (7 * 24 * 60 * 60 * 1000)
   );
-  if (totalWeeks < b.rampWeeks) return 0;
-  const weeksOnGoal = totalWeeks - b.rampWeeks + 2;
-  return Math.max(0, weeksOnGoal * 100 + b.goalAdjustment);
+  return { weeksIn, rampWeeks, ramping: weeksIn < rampWeeks };
 }
