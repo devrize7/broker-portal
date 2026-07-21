@@ -11,6 +11,7 @@ interface BrokerRow {
   weeklyGoal: number;
   ramping: boolean;
   rampWeeksLeft: number;
+  goalStartDate: string | null;
   current: { loads: number; revenue: number; margin: number; avgPerLoad: number; marginPct: number };
   rolling4wAvg: { loads: number; margin: number };
   goalPct: number | null;
@@ -59,6 +60,11 @@ function weekRangeLabel(weekStart: string) {
   const end = new Date(start);
   end.setDate(end.getDate() + 6);
   return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} — ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+/** "2026-07-27" → "Jul 27" (noon avoids any TZ date rollback). */
+function shortDate(ymd: string) {
+  return new Date(ymd + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function PaceChip({ status }: { status: BrokerRow["paceStatus"] }) {
@@ -494,9 +500,7 @@ export default function LeaderboardPage() {
                                 Ramping
                               </span>
                               <p className="text-xs text-slate-600 mt-1.5">
-                                {b.ramping
-                                  ? `Goal starts in ${b.rampWeeksLeft} ${b.rampWeeksLeft === 1 ? "wk" : "wks"}`
-                                  : "No goal set"}
+                                {b.goalStartDate ? `Goal starts ${shortDate(b.goalStartDate)}` : "No goal set"}
                               </p>
                             </div>
                           ) : (
@@ -509,7 +513,7 @@ export default function LeaderboardPage() {
                                 <div className="h-full w-full rounded-full bg-emerald-400 transition-all duration-700" />
                               </div>
                               <p className="text-xs text-white/70 mt-1.5 text-right">
-                                {b.ramping ? `ramping up · goal in ${b.rampWeeksLeft} ${b.rampWeeksLeft === 1 ? "wk" : "wks"}` : "ramping up"}
+                                {b.goalStartDate ? `ramping up · goal ${shortDate(b.goalStartDate)}` : "ramping up"}
                               </p>
                             </div>
                           )}
@@ -600,16 +604,14 @@ export default function LeaderboardPage() {
                           Ramping
                         </span>
                         <span className="text-xs text-slate-600">
-                          {b.ramping
-                            ? `Goal starts in ${b.rampWeeksLeft} ${b.rampWeeksLeft === 1 ? "wk" : "wks"}`
-                            : "No goal set"}
+                          {b.goalStartDate ? `Goal starts ${shortDate(b.goalStartDate)}` : "No goal set"}
                         </span>
                       </div>
                     ) : (
                       <div>
                         <div className="flex justify-between items-baseline mb-1">
                           <span className="text-xs text-slate-500">
-                            {b.ramping ? `Ramping up · goal in ${b.rampWeeksLeft} ${b.rampWeeksLeft === 1 ? "wk" : "wks"}` : "Ramping up"}
+                            {b.goalStartDate ? `Ramping up · goal ${shortDate(b.goalStartDate)}` : "Ramping up"}
                           </span>
                           <span className="text-xs font-bold text-emerald-400">100%</span>
                         </div>
