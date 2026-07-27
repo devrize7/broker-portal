@@ -8,6 +8,13 @@ import { trueMargin, trueRevenue } from "@/lib/margin";
 export const dynamic = "force-dynamic";
 
 const CONTEST_START = "2026-02-20";
+// Contest ran through Sunday July 26, 11:59pm ET. pickupDate is stored as a
+// noon-UTC calendar-date stamp (2026-07-26T12:00:00+00:00), so "through Jul 26
+// ET" is exactly pickupDate < '2026-07-27' — no TZ math needed. Without this
+// bound the standings kept accruing post-contest loads (caught 2026-07-27:
+// five brokers had already gained $25–$650 of after-the-bell GP, with the
+// #1/#2 gap at just ~$575).
+const CONTEST_END_EXCLUSIVE = "2026-07-27";
 const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
 
 export async function GET() {
@@ -22,8 +29,8 @@ export async function GET() {
     const [contestResult, preContestResult] = await Promise.all([
       db.execute({
         sql: `SELECT salesRep, customer, revenue, carrierCost, lumperRevenue, lumperCost, pickupDate, status
-              FROM Load WHERE pickupDate >= ? AND customer IS NOT NULL`,
-        args: [CONTEST_START],
+              FROM Load WHERE pickupDate >= ? AND pickupDate < ? AND customer IS NOT NULL`,
+        args: [CONTEST_START, CONTEST_END_EXCLUSIVE],
       }),
       db.execute({
         sql: `SELECT DISTINCT customer FROM Load WHERE pickupDate < ? AND customer IS NOT NULL`,
@@ -107,7 +114,14 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ brokers, contestStart: CONTEST_START });
+    return NextResponse.json({
+      brokers,
+      contestStart: CONTEST_START,
+      // Inclusive final day (the bound above is exclusive) — the UI renders
+      // this as "Final — ended Jul 26".
+      contestEnd: "2026-07-26",
+      contestOver: true,
+    });
   } catch (err) {
     console.error("Sales contest error:", err);
     return NextResponse.json({ error: "Failed to load sales contest" }, { status: 500 });

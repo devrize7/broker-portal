@@ -649,10 +649,10 @@ export default function LeaderboardPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-slate-500 border border-white/[0.08] rounded-full px-2.5 py-0.5 uppercase tracking-wider">
-                  Since Feb 20, 2026
+                  Feb 20 — Jul 26, 2026
                 </span>
-                <span className="text-[10px] text-amber-400 border border-amber-500/40 bg-amber-500/10 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
-                  Ends Friday, July 25
+                <span className="text-[10px] text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                  Final standings
                 </span>
               </div>
             </div>
