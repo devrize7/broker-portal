@@ -1,192 +1,185 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/route-auth";
-import { db } from "@/lib/db";
-import { resolveActiveBroker } from "@/lib/broker-mapping";
+import { requireBrokerAccess } from "@/lib/route-auth";
 import { getRoster, getWeeklyGoal } from "@/lib/roster";
-import { trueMargin, trueRevenue } from "@/lib/margin";
+import { fetchCountableLoads, loadsForBroker, type CountableLoad } from "@/lib/load-query";
+import { buildCustomerBook, DORMANT_DAYS } from "@/lib/customer-book";
+import { parsePreset, resolveRange, startOfWeek, todayET } from "@/lib/date-ranges";
 
 export const dynamic = "force-dynamic";
 
-function getMondayOf(date: Date): Date {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short',
-  }).formatToParts(date);
-  const year = parseInt(parts.find(p => p.type === 'year')!.value);
-  const month = parseInt(parts.find(p => p.type === 'month')!.value) - 1;
-  const day = parseInt(parts.find(p => p.type === 'day')!.value);
-  const weekdayStr = parts.find(p => p.type === 'weekday')!.value;
-  const dayOfWeek = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(weekdayStr);
-  const d = new Date(year, month, day);
-  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-const EXCLUDED = ["booked", "committed", "cancelled", "quote", "sent"];
-
-// Weekly goal (hire dates / ramp / Tom's -100) comes from the roster feed —
-// getWeeklyGoal in lib/roster.ts. No hardcoded mirror here.
-
+/**
+ * A broker's drill-down: weekly trend, book of business, and period stats.
+ *
+ * Two independent time controls, deliberately:
+ *   `weeks`            → the weekly TREND charts (a trailing window; a trend
+ *                        needs a run of weeks, so it can't follow a range that
+ *                        may be a single week).
+ *   `preset`/`from`/`to` → the PERIOD pull: KPI totals, customer numbers, lanes
+ *                        and carriers. This is the "what did they do last week /
+ *                        last month / last quarter" control.
+ *
+ * Active vs dormant customer status does NOT follow the range — see the header
+ * of lib/customer-book.ts for why.
+ */
 export async function GET(req: NextRequest) {
-  const { session, response } = await requireSession();
-  if (!session) return response;
+  const params = req.nextUrl.searchParams;
+  const access = await requireBrokerAccess(params.get("broker"));
+  if (!access.ok) return access.response;
+  const broker = access.broker;
 
-  const user = session.user as { brokerName?: string | null; isAdmin?: boolean };
-  const requestedBroker = req.nextUrl.searchParams.get("broker");
-
-  if (!requestedBroker || (!user.isAdmin && user.brokerName !== requestedBroker)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const weeks = Math.min(parseInt(req.nextUrl.searchParams.get("weeks") ?? "12", 10), 52);
+  const weeks = Math.min(Math.max(parseInt(params.get("weeks") ?? "12", 10) || 12, 1), 52);
+  const range = resolveRange(parsePreset(params.get("preset")), {
+    from: params.get("from"),
+    to: params.get("to"),
+  });
+  const today = todayET();
 
   try {
-    const roster = await getRoster();
-    const now = new Date();
-    const thisMonday = getMondayOf(now);
-    const since = new Date(thisMonday);
-    since.setDate(since.getDate() - weeks * 7);
+    const [roster, allLoads] = await Promise.all([getRoster(), fetchCountableLoads()]);
+    const loads = loadsForBroker(allLoads, roster, broker);
 
-    const excluded = EXCLUDED.map(() => "?").join(",");
-    const result = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, origin, destination, carrier, profWeek, lumperRevenue, lumperCost
-            FROM Load
-            WHERE (pickupDate >= ? OR profWeek >= ?) AND status NOT IN (${excluded})
-            ORDER BY pickupDate ASC`,
-      args: [since.toISOString(), since.toISOString().slice(0, 10), ...EXCLUDED],
-    });
+    // ── Weekly trend (trailing `weeks` window, independent of the range) ──────
+    const thisWeekKey = startOfWeek(today);
+    const windowStart = shiftWeeks(thisWeekKey, -(weeks - 1));
 
-    // Build set of weeks with profWeek-tagged data
-    const weeksWithProfData = new Set<string>();
-    for (const row of result.rows) {
-      const pw = row[7] as string | null;
-      if (pw) weeksWithProfData.add(pw);
+    const weekMap = new Map<string, { loads: number; revenue: number; margin: number }>();
+    for (const load of loads) {
+      if (load.weekKey < windowStart) continue;
+      const bucket = weekMap.get(load.weekKey) ?? { loads: 0, revenue: 0, margin: 0 };
+      bucket.loads += 1;
+      bucket.revenue += trueRevenue(load);
+      bucket.margin += trueMargin(load);
+      weekMap.set(load.weekKey, bucket);
     }
 
-    // Group by week
-    const weekMap: Record<string, { loads: number; revenue: number; margin: number; weekMonday: Date }> = {};
-    const laneMap: Record<string, { loads: number; margin: number }> = {};
-    const carrierMap: Record<string, { loads: number; margin: number }> = {};
-
-    for (const row of result.rows) {
-      const salesRep = row[0] as string | null;
-      const { broker, isActive } = resolveActiveBroker(roster, salesRep);
-      if (!isActive || broker !== requestedBroker) continue;
-
-      const revenue = row[1] as number;
-      const carrierCost = row[2] as number;
-      // Skip $0/$0 phantom loads
-      if (revenue === 0 && carrierCost === 0) continue;
-      const lumperRevenue = Number(row[8]) || 0;
-      const lumperCost = Number(row[9]) || 0;
-      const margin = trueMargin(revenue, carrierCost, lumperRevenue, lumperCost);
-      const pickupDate = row[3] as string;
-      const origin = row[4] as string;
-      const destination = row[5] as string;
-      const carrier = (row[6] as string) || "Unknown";
-      const profWeek = row[7] as string | null;
-
-      // Use profWeek as source of truth for week assignment
-      let weekKey: string;
-      if (profWeek) {
-        weekKey = profWeek;
-      } else {
-        weekKey = getMondayOf(new Date(pickupDate)).toISOString().slice(0, 10);
-        // Skip untagged loads for weeks that have profWeek data
-        if (weeksWithProfData.has(weekKey)) continue;
-      }
-
-      const weekMon = new Date(weekKey + "T00:00:00");
-      if (!weekMap[weekKey]) {
-        weekMap[weekKey] = { loads: 0, revenue: 0, margin: 0, weekMonday: weekMon };
-      }
-      weekMap[weekKey].loads += 1;
-      weekMap[weekKey].revenue += trueRevenue(revenue, lumperRevenue);
-      weekMap[weekKey].margin += margin;
-
-      const laneKey = `${origin} → ${destination}`;
-      if (!laneMap[laneKey]) laneMap[laneKey] = { loads: 0, margin: 0 };
-      laneMap[laneKey].loads += 1;
-      laneMap[laneKey].margin += margin;
-
-      if (!carrierMap[carrier]) carrierMap[carrier] = { loads: 0, margin: 0 };
-      carrierMap[carrier].loads += 1;
-      carrierMap[carrier].margin += margin;
-    }
-
-    // Build weekly array including current partial week, sorted oldest → newest
-    const weeklyData = Object.entries(weekMap)
+    const weeklyData = [...weekMap.entries()]
       .map(([weekKey, data]) => ({
         weekKey,
-        weekLabel: new Date(weekKey + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        weekLabel: labelDay(weekKey),
         loads: data.loads,
         revenue: data.revenue,
         margin: data.margin,
-        goal: getWeeklyGoal(roster, requestedBroker, data.weekMonday),
-        isCurrent: weekKey === thisMonday.toISOString().slice(0, 10),
+        // getWeeklyGoal takes a week-END date and re-derives the Monday in ET.
+        // Handing it a local-midnight Monday reads as Sunday 8pm ET on Vercel
+        // and walks the derivation back a week, making every goal $100 light.
+        // Noon on the Sunday is unambiguous under every US offset.
+        goal: getWeeklyGoal(roster, broker, sundayNoon(weekKey)),
+        isCurrent: weekKey === thisWeekKey,
       }))
       .sort((a, b) => a.weekKey.localeCompare(b.weekKey));
 
-    const topLanes = Object.entries(laneMap)
-      .map(([lane, d]) => ({ lane, loads: d.loads, margin: d.margin }))
-      .sort((a, b) => b.loads - a.loads)
-      .slice(0, 8);
-
-    const topCarriers = Object.entries(carrierMap)
-      .map(([carrier, d]) => ({ carrier, loads: d.loads, margin: d.margin }))
-      .sort((a, b) => b.loads - a.loads)
-      .slice(0, 8);
-
-    // ── All-time RECORD WEEK (best completed week by margin) ──────────────────
-    // Separate from the windowed weeklyData above — the record must look back over
-    // the broker's whole tenure, not just the 8/12/26-week view. The in-progress
-    // week is excluded (a partial week can't be a record).
-    const recRes = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, lumperRevenue, lumperCost FROM Load WHERE status NOT IN (${excluded})`,
-      args: [...EXCLUDED],
-    });
-    const recProfWeeks = new Set<string>();
-    for (const row of recRes.rows) { const pw = row[4] as string | null; if (pw) recProfWeeks.add(pw); }
-    const recWeekMap: Record<string, { margin: number; loads: number }> = {};
-    for (const row of recRes.rows) {
-      const { broker, isActive } = resolveActiveBroker(roster, row[0] as string | null);
-      if (!isActive || broker !== requestedBroker) continue;
-      const revenue = row[1] as number;
-      const carrierCost = row[2] as number;
-      if (revenue === 0 && carrierCost === 0) continue; // phantom $0/$0
-      const profWeek = row[4] as string | null;
-      let weekKey: string;
-      if (profWeek) weekKey = profWeek;
-      else { weekKey = getMondayOf(new Date(row[3] as string)).toISOString().slice(0, 10); if (recProfWeeks.has(weekKey)) continue; }
-      if (!recWeekMap[weekKey]) recWeekMap[weekKey] = { margin: 0, loads: 0 };
-      recWeekMap[weekKey].margin += trueMargin(revenue, carrierCost, Number(row[5]) || 0, Number(row[6]) || 0);
-      recWeekMap[weekKey].loads += 1;
+    // ── All-time record week (completed weeks only) ───────────────────────────
+    const allWeeks = new Map<string, { margin: number; loads: number }>();
+    for (const load of loads) {
+      const bucket = allWeeks.get(load.weekKey) ?? { margin: 0, loads: 0 };
+      bucket.margin += trueMargin(load);
+      bucket.loads += 1;
+      allWeeks.set(load.weekKey, bucket);
     }
-    const thisMondayKey = thisMonday.toISOString().slice(0, 10);
-    let recordWeek: { weekKey: string; weekLabel: string; margin: number; loads: number } | null = null;
-    for (const [weekKey, d] of Object.entries(recWeekMap)) {
-      if (weekKey === thisMondayKey) continue; // exclude the in-progress week
+    let recordWeek: { weekKey: string; weekLabel: string; margin: number; loads: number } | null =
+      null;
+    for (const [weekKey, d] of allWeeks) {
+      if (weekKey === thisWeekKey) continue; // a partial week can't be a record
       if (!recordWeek || d.margin > recordWeek.margin) {
-        recordWeek = {
-          weekKey,
-          weekLabel: new Date(weekKey + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-          margin: d.margin,
-          loads: d.loads,
-        };
+        recordWeek = { weekKey, weekLabel: labelDay(weekKey, true), margin: d.margin, loads: d.loads };
       }
     }
 
+    // ── Book of business + period stats ───────────────────────────────────────
+    const book = buildCustomerBook(
+      loads.map((l) => ({
+        customer: l.customer,
+        pickupDate: l.pickupYmd,
+        revenue: l.revenue,
+        carrierCost: l.carrierCost,
+        lumperRevenue: l.lumperRevenue,
+        lumperCost: l.lumperCost,
+      })),
+      { today, rangeFrom: range.from, rangeToExclusive: range.toExclusive }
+    );
+
+    const inRange = loads.filter(
+      (l) => l.pickupYmd >= range.from && l.pickupYmd < range.toExclusive
+    );
+
     return NextResponse.json({
-      broker: requestedBroker,
+      broker,
+      range: {
+        preset: range.preset,
+        label: range.label,
+        from: range.from,
+        to: range.toDisplay,
+      },
+      periodSummary: {
+        loads: book.periodTotals.loads,
+        revenue: book.periodTotals.revenue,
+        margin: book.periodTotals.margin,
+        customersRan: book.active.filter((c) => c.period.loads > 0).length,
+      },
+      customers: {
+        active: book.active,
+        dormant: book.dormant,
+        dormantDays: DORMANT_DAYS,
+      },
+      topLanes: rank(inRange, (l) => `${l.origin} → ${l.destination}`, "lane"),
+      topCarriers: rank(inRange, (l) => l.carrier, "carrier"),
       weeklyData,
-      topLanes,
-      topCarriers,
       recordWeek,
     });
   } catch (err) {
     console.error("Broker history error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
+}
+
+function trueMargin(l: CountableLoad): number {
+  return l.revenue - l.carrierCost - (l.lumperRevenue - l.lumperCost);
+}
+
+function trueRevenue(l: CountableLoad): number {
+  return l.revenue - l.lumperRevenue;
+}
+
+function rank<K extends string>(
+  loads: CountableLoad[],
+  key: (l: CountableLoad) => string,
+  field: K
+): Array<Record<K, string> & { loads: number; margin: number }> {
+  const map = new Map<string, { loads: number; margin: number }>();
+  for (const load of loads) {
+    const k = key(load);
+    const bucket = map.get(k) ?? { loads: 0, margin: 0 };
+    bucket.loads += 1;
+    bucket.margin += trueMargin(load);
+    map.set(k, bucket);
+  }
+  return [...map.entries()]
+    .map(([value, d]) => ({ [field]: value, loads: d.loads, margin: d.margin }) as Record<K, string> & {
+      loads: number;
+      margin: number;
+    })
+    .sort((a, b) => b.loads - a.loads)
+    .slice(0, 8);
+}
+
+function shiftWeeks(mondayYmd: string, weeks: number): string {
+  const d = new Date(`${mondayYmd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + weeks * 7);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Noon on the Sunday that closes the week — see the goal comment above. */
+function sundayNoon(mondayYmd: string): Date {
+  const d = new Date(`${mondayYmd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d;
+}
+
+function labelDay(ymd: string, withYear = false): string {
+  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+    ...(withYear ? { year: "numeric" } : {}),
+  });
 }

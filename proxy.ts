@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
+import { brokerSegmentOf } from "@/lib/broker-mapping";
 
 export const proxy = auth((req) => {
   const { pathname } = req.nextUrl;
@@ -35,7 +36,7 @@ export const proxy = auth((req) => {
     if (user.isAdmin) return NextResponse.next();
 
     const brokerName = user.brokerName;
-    const requestedName = decodeURIComponent(pathname.split("/broker/")[1] ?? "");
+    const requestedName = brokerSegmentOf(pathname);
     if (brokerName && requestedName && brokerName !== requestedName) {
       return NextResponse.redirect(
         new URL(`/broker/${encodeURIComponent(brokerName)}`, req.url)

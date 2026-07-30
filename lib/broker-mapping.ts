@@ -36,6 +36,27 @@ export function resolveActiveBroker(
   return { broker: names[0], isActive: false };
 }
 
+/**
+ * The broker name a `/broker/...` URL is addressing — `/broker/<name>` and all
+ * of its children resolve to `<name>`.
+ *
+ * Pure and tested because the proxy's "brokers can only open their own page"
+ * redirect is built on it. The original inline version split on the literal
+ * "/broker/" and took everything after it, which was correct only while the
+ * route had no children; once `/broker/<name>/customer/<customer>` existed it
+ * yielded "Tom Licata/customer/Acme" and bounced brokers off their own pages.
+ */
+export function brokerSegmentOf(pathname: string): string {
+  const segment = pathname.split("/")[2] ?? "";
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    // A malformed percent-escape must not throw inside the proxy — an
+    // undecodable segment simply matches no broker and the guard redirects.
+    return segment;
+  }
+}
+
 /** Active broker names in displayOrder (nulls last). */
 export function getActiveBrokerNames(roster: Roster): string[] {
   return [...roster.activeNames];
