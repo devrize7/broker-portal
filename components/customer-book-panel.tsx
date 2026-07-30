@@ -1,13 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, MoonStar, TrendingUp } from "lucide-react";
+import { AlertTriangle, ChevronRight, MoonStar, TrendingUp } from "lucide-react";
 import { fmtDate, fmtGap, fmtMoney } from "@/lib/format";
 
 export interface BookStats {
   loads: number;
   revenue: number;
   margin: number;
+}
+
+export interface CustomerAr {
+  totalOpen: number;
+  overdueTotal: number;
+  oldestDaysOverdue: number;
+  seriouslyPastDue: boolean;
 }
 
 export interface CustomerEntry {
@@ -17,6 +24,8 @@ export interface CustomerEntry {
   daysSinceLastLoad: number;
   lifetime: BookStats;
   period: BookStats;
+  /** What the CUSTOMER owes (whole balance, not this broker's slice). */
+  ar?: CustomerAr | null;
   /** House-accounts view only: the last rep TAI stamped on the account. */
   lastRep?: string;
 }
@@ -66,6 +75,16 @@ function Row({
             </>
           )}
         </p>
+
+        {/* Past-due flag. Deliberately a statement, not a call to action — the
+            collectors own the chase and a broker can't see their cadence. What
+            this should change is whether they book the NEXT load. */}
+        {entry.ar?.seriouslyPastDue && (
+          <p className="text-xs text-rose-400/90 mt-1 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3 shrink-0" />
+            {fmtMoney(entry.ar.overdueTotal)} past due · oldest {entry.ar.oldestDaysOverdue}d
+          </p>
+        )}
       </div>
 
       <div className="text-right shrink-0 flex items-center gap-2">

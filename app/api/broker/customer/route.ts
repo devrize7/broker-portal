@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireBrokerAccess } from "@/lib/route-auth";
 import { getRoster } from "@/lib/roster";
-import { fetchCountableLoads, loadsForBroker, type CountableLoad } from "@/lib/load-query";
+import {
+  fetchCountableLoads,
+  fetchOpenArRows,
+  loadsForBroker,
+  type CountableLoad,
+} from "@/lib/load-query";
 import { DORMANT_DAYS } from "@/lib/customer-book";
+import { buildCustomerAr, isSeriouslyPastDue } from "@/lib/customer-ar";
 import { addMonths, daysBetween, parsePreset, resolveRange, startOfMonth, todayET } from "@/lib/date-ranges";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +43,11 @@ export async function GET(req: NextRequest) {
   const today = todayET();
 
   try {
-    const [roster, allLoads] = await Promise.all([getRoster(), fetchCountableLoads()]);
+    const [roster, allLoads, arRows] = await Promise.all([
+      getRoster(),
+      fetchCountableLoads(),
+      fetchOpenArRows(),
+    ]);
     // Trim-tolerant match: customer names in the Load table carry stray
     // whitespace, and a caller only ever holds the trimmed spelling.
     const target = customerParam.toLowerCase();
@@ -83,9 +93,26 @@ export async function GET(req: NextRequest) {
       ...d,
     }));
 
+    // The CUSTOMER's whole balance, not this broker's slice — the figure that
+    // reconciles with the Collections page. Advisory: no action is offered here.
+    const customerName = loads[0].customer.trim();
+    const arRow = buildCustomerAr(arRows, Date.now()).get(customerName);
+    const ar = arRow
+      ? {
+          totalOpen: arRow.totalOpen,
+          invoiceCount: arRow.invoiceCount,
+          overdueTotal: arRow.overdueTotal,
+          overdueCount: arRow.overdueCount,
+          oldestDaysOverdue: arRow.oldestDaysOverdue,
+          parkedTotal: arRow.parkedTotal,
+          seriouslyPastDue: isSeriouslyPastDue(arRow),
+        }
+      : null;
+
     return NextResponse.json({
       broker,
-      customer: loads[0].customer.trim(),
+      customer: customerName,
+      ar,
       status: daysSinceLastLoad <= DORMANT_DAYS ? "active" : "dormant",
       dormantDays: DORMANT_DAYS,
       lastLoadDate,

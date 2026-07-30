@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireBrokerAccess } from "@/lib/route-auth";
 import { getRoster, getWeeklyGoal } from "@/lib/roster";
-import { fetchCountableLoads, loadsForBroker, type CountableLoad } from "@/lib/load-query";
+import {
+  fetchCountableLoads,
+  fetchOpenArRows,
+  loadsForBroker,
+  type CountableLoad,
+} from "@/lib/load-query";
 import { buildCustomerBook, DORMANT_DAYS } from "@/lib/customer-book";
+import { buildCustomerAr, isSeriouslyPastDue, type CustomerAr } from "@/lib/customer-ar";
 import { parsePreset, resolveRange, startOfWeek, todayET } from "@/lib/date-ranges";
 
 export const dynamic = "force-dynamic";
@@ -35,8 +41,37 @@ export async function GET(req: NextRequest) {
   const today = todayET();
 
   try {
-    const [roster, allLoads] = await Promise.all([getRoster(), fetchCountableLoads()]);
+    const [roster, allLoads, arRows] = await Promise.all([
+      getRoster(),
+      fetchCountableLoads(),
+      fetchOpenArRows(),
+    ]);
     const loads = loadsForBroker(allLoads, roster, broker);
+    const arByCustomer = buildCustomerAr(arRows, Date.now());
+
+    /**
+     * Attach what the customer OWES to a book entry.
+     *
+     * These are the CUSTOMER's whole balance, not this broker's slice — that is
+     * what reconciles with the Collections page, and it is the number that
+     * should inform whether to book another load. Advisory only: the portal
+     * shows it and offers no way to act on it (chasing belongs to the
+     * collectors, whose dunning cadence a broker cannot see).
+     */
+    const withAr = <T extends { customer: string }>(entry: T) => {
+      const ar: CustomerAr | undefined = arByCustomer.get(entry.customer);
+      return {
+        ...entry,
+        ar: ar
+          ? {
+              totalOpen: ar.totalOpen,
+              overdueTotal: ar.overdueTotal,
+              oldestDaysOverdue: ar.oldestDaysOverdue,
+              seriouslyPastDue: isSeriouslyPastDue(ar),
+            }
+          : null,
+      };
+    };
 
     // ── Weekly trend (trailing `weeks` window, independent of the range) ──────
     const thisWeekKey = startOfWeek(today);
@@ -117,8 +152,8 @@ export async function GET(req: NextRequest) {
         customersRan: book.active.filter((c) => c.period.loads > 0).length,
       },
       customers: {
-        active: book.active,
-        dormant: book.dormant,
+        active: book.active.map(withAr),
+        dormant: book.dormant.map(withAr),
         dormantDays: DORMANT_DAYS,
       },
       topLanes: rank(inRange, (l) => `${l.origin} → ${l.destination}`, "lane"),

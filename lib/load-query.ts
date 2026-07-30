@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import type { Roster } from "@/lib/roster";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
 import { startOfWeek } from "@/lib/date-ranges";
+import type { ArLoadRow } from "@/lib/customer-ar";
 
 /**
  * Only dispatched-and-later loads count.
@@ -148,6 +149,35 @@ export function loadsForBroker(
     const resolved = resolveActiveBroker(roster, load.salesRep);
     return resolved.isActive && resolved.broker === broker;
   });
+}
+
+/**
+ * Every open, un-written-off invoice in the book, for the AR rollup.
+ *
+ * Deliberately NOT status-filtered and NOT restricted to one broker: it mirrors
+ * the dashboard's Collections query exactly (see lib/customer-ar.ts), so the
+ * portal's "$X overdue" for a customer is the same number Jacob sees on the
+ * Collections page. Scoping it to one broker's slice would produce a figure
+ * that reconciles with nothing.
+ */
+export async function fetchOpenArRows(): Promise<ArLoadRow[]> {
+  const result = await db.execute(
+    `SELECT customer, invoiceBalance, invoiceDate, pickupDate,
+            dunningHold, disputedAt, ptpDate
+     FROM Load
+     WHERE invoiceBalance > 0 AND writtenOffAt IS NULL`
+  );
+
+  return result.rows.map((r) => ({
+    customer: String(r.customer ?? ""),
+    invoiceBalance: Number(r.invoiceBalance) || 0,
+    invoiceDate: (r.invoiceDate as string | null) ?? null,
+    pickupDate: (r.pickupDate as string | null) ?? null,
+    // SQLite has no boolean type — Prisma stores these as 0/1.
+    dunningHold: Number(r.dunningHold) === 1,
+    disputedAt: (r.disputedAt as string | null) ?? null,
+    ptpDate: (r.ptpDate as string | null) ?? null,
+  }));
 }
 
 /**
