@@ -24,11 +24,9 @@ export interface CustomerEntry {
 function Row({
   entry,
   href,
-  rangeLabel,
 }: {
   entry: CustomerEntry;
   href: string | null;
-  rangeLabel: string;
 }) {
   const dormant = entry.status === "dormant";
   const ranInPeriod = entry.period.loads > 0;
@@ -144,12 +142,7 @@ export default function CustomerBookPanel({
         ) : (
           <div>
             {active.map((c) => (
-              <Row
-                key={c.customer}
-                entry={c}
-                href={hrefFor?.(c.customer) ?? null}
-                rangeLabel={rangeLabel}
-              />
+              <Row key={c.customer} entry={c} href={hrefFor?.(c.customer) ?? null} />
             ))}
           </div>
         )}
@@ -174,12 +167,7 @@ export default function CustomerBookPanel({
         ) : (
           <div>
             {dormant.map((c) => (
-              <Row
-                key={c.customer}
-                entry={c}
-                href={hrefFor?.(c.customer) ?? null}
-                rangeLabel={rangeLabel}
-              />
+              <Row key={c.customer} entry={c} href={hrefFor?.(c.customer) ?? null} />
             ))}
           </div>
         )}

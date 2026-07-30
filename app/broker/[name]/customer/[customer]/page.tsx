@@ -15,7 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import RangePicker, { toQuery, type RangeSelection } from "@/components/range-picker";
-import { DEFAULT_PRESET, parsePreset } from "@/lib/date-ranges";
+import { DEFAULT_PRESET, isValidYmd, parsePreset } from "@/lib/date-ranges";
 import { fmtDate, fmtGap, fmtK, fmtMoney } from "@/lib/format";
 
 interface Summary {
@@ -86,13 +86,14 @@ export default function CustomerDetailPage() {
   // the same window the user was already looking at.
   const [range, setRange] = useState<RangeSelection>(() => {
     const preset = parsePreset(searchParams.get("preset") ?? DEFAULT_PRESET);
-    return preset === "custom"
-      ? {
-          preset,
-          from: searchParams.get("from") ?? undefined,
-          to: searchParams.get("to") ?? undefined,
-        }
-      : { preset };
+    if (preset !== "custom") return { preset };
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    // `custom` without usable bounds would leave the Custom chip highlighted
+    // while the server quietly served the default period — a control that
+    // disagrees with the data it labels. Fall back the same way the server does.
+    if (!isValidYmd(from) || !isValidYmd(to)) return { preset: DEFAULT_PRESET };
+    return { preset, from, to };
   });
 
   const [data, setData] = useState<CustomerDetail | null>(null);
