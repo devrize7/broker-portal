@@ -43,7 +43,7 @@ function Row({
               {/* On a lapsed account the gap IS the headline. */}
               <span className="text-amber-500/80">last load {fmtGap(entry.daysSinceLastLoad)}</span>
               {" · "}
-              {entry.lifetime.loads} loads all-time · {fmtMoney(entry.lifetime.margin)}
+              {entry.lifetime.loads} loads all-time · {fmtMoney(entry.lifetime.margin)} margin
               {entry.lastRep ? ` · was ${entry.lastRep}` : ""}
             </>
           ) : ranInPeriod ? (
@@ -78,7 +78,7 @@ function Row({
             {ranInPeriod ? fmtMoney(entry.period.margin) : "—"}
           </p>
           {!dormant && ranInPeriod && (
-            <p className="text-[11px] text-slate-600">{fmtMoney(entry.lifetime.margin)} all-time</p>
+            <p className="text-[11px] text-slate-600">{fmtMoney(entry.lifetime.margin)} all-time margin</p>
           )}
         </div>
         {href && (

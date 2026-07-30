@@ -219,12 +219,19 @@ export default function CustomerDetailPage() {
                   {data.period.loads > 0 ? `${data.period.marginPct.toFixed(1)}% margin` : "no loads"}
                 </p>
               </div>
+              {/* Explicitly "margin", with revenue underneath. Unlabelled, this
+                  read as all-time REVENUE and looked like it contradicted the
+                  customer's open AR — which is revenue, and can dwarf margin. */}
               <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                <p className="text-xs text-slate-600 uppercase tracking-wider mb-1">All-Time</p>
+                <p className="text-xs text-slate-600 uppercase tracking-wider mb-1">
+                  All-Time Margin
+                </p>
                 <p className="text-xl font-bold text-white tabular-nums">
                   {fmtMoney(data.lifetime.margin)}
                 </p>
-                <p className="text-xs text-slate-600 mt-0.5">{data.lifetime.loads} loads</p>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  {data.lifetime.loads} loads · {fmtMoney(data.lifetime.revenue)} revenue
+                </p>
               </div>
             </div>
 
