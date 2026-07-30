@@ -259,6 +259,14 @@ export default function LeaderboardPage() {
                 ))}
               </select>
             ) : null}
+            {isAdmin && (
+              <Link
+                href="/house-accounts"
+                className="text-sm px-3 py-2 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-colors whitespace-nowrap"
+              >
+                House accounts
+              </Link>
+            )}
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
