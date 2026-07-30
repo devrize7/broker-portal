@@ -26,9 +26,20 @@ interface Summary {
   avgPerLoad: number;
 }
 
+interface CustomerArDetail {
+  totalOpen: number;
+  invoiceCount: number;
+  overdueTotal: number;
+  overdueCount: number;
+  oldestDaysOverdue: number;
+  parkedTotal: number;
+  seriouslyPastDue: boolean;
+}
+
 interface CustomerDetail {
   broker: string;
   customer: string;
+  ar: CustomerArDetail | null;
   status: "active" | "dormant";
   dormantDays: number;
   lastLoadDate: string;
@@ -181,6 +192,26 @@ export default function CustomerDetailPage() {
           </div>
         ) : (
           <>
+            {/* Money owed outranks activity: if this account is badly past due,
+                that's the thing to know before booking another load. Stated as a
+                fact with no action attached — the collectors run the chase on
+                their own cadence, which a broker can't see from here. */}
+            {data.ar?.seriouslyPastDue && (
+              <div className="rounded-xl border-2 border-rose-500/40 bg-rose-500/[0.07] px-5 py-4">
+                <p className="text-rose-300 font-semibold text-lg">
+                  {fmtMoney(data.ar.overdueTotal)} past due — oldest {data.ar.oldestDaysOverdue} days.
+                </p>
+                <p className="text-slate-400 text-sm mt-1">
+                  {fmtMoney(data.ar.totalOpen)} open across {data.ar.invoiceCount}{" "}
+                  {data.ar.invoiceCount === 1 ? "invoice" : "invoices"}
+                  {data.ar.parkedTotal > 0
+                    ? `, of which ${fmtMoney(data.ar.parkedTotal)} is on hold, disputed or under a promise to pay`
+                    : ""}
+                  . Collections is chasing this — check with Jacob before booking more.
+                </p>
+              </div>
+            )}
+
             {dormant && (
               <div className="rounded-xl border-2 border-amber-500/30 bg-amber-500/[0.06] px-5 py-4">
                 <p className="text-amber-300 font-semibold">
@@ -195,7 +226,7 @@ export default function CustomerDetailPage() {
             )}
 
             {/* Period vs lifetime */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] px-4 py-3">
                 <p className="text-xs text-emerald-400/80 uppercase tracking-wider mb-1">Margin</p>
                 <p className="text-xl font-bold text-emerald-400 tabular-nums">
@@ -222,6 +253,40 @@ export default function CustomerDetailPage() {
               {/* Explicitly "margin", with revenue underneath. Unlabelled, this
                   read as all-time REVENUE and looked like it contradicted the
                   customer's open AR — which is revenue, and can dwarf margin. */}
+              {/* What they OWE, beside what they earned. This card is the whole
+                  reason margin got labelled: the two are different measures and
+                  open AR is routinely many times lifetime margin. */}
+              <div
+                className={`rounded-xl border px-4 py-3 ${
+                  data.ar?.seriouslyPastDue
+                    ? "border-rose-500/30 bg-rose-500/[0.05]"
+                    : "border-white/[0.06] bg-white/[0.02]"
+                }`}
+              >
+                <p className="text-xs text-slate-600 uppercase tracking-wider mb-1">Open AR</p>
+                {data.ar ? (
+                  <>
+                    <p className="text-xl font-bold text-white tabular-nums">
+                      {fmtMoney(data.ar.totalOpen)}
+                    </p>
+                    <p
+                      className={`text-xs mt-0.5 ${
+                        data.ar.overdueTotal > 0 ? "text-rose-400/90" : "text-slate-600"
+                      }`}
+                    >
+                      {data.ar.overdueTotal > 0
+                        ? `${fmtMoney(data.ar.overdueTotal)} past due`
+                        : "nothing past due"}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xl font-bold text-slate-600">$0</p>
+                    <p className="text-xs text-slate-600 mt-0.5">all paid up</p>
+                  </>
+                )}
+              </div>
+
               <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
                 <p className="text-xs text-slate-600 uppercase tracking-wider mb-1">
                   All-Time Margin
