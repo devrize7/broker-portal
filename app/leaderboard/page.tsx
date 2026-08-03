@@ -5,6 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft, Search, ChevronUp, ChevronDown, Flame, Trophy } from "lucide-react";
+import type { LeaderboardPeriod } from "@/lib/leaderboard-periods";
 
 interface BrokerRow {
   broker: string;
@@ -22,6 +23,10 @@ interface BrokerRow {
 }
 
 interface LeaderboardData {
+  period: LeaderboardPeriod;
+  periodStart: string;
+  periodEnd: string;
+  periodLabel: string;
   weekStart: string;
   updatedAt: string;
   paceFactor: number;
@@ -130,19 +135,20 @@ export default function LeaderboardPage() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("margin");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [period, setPeriod] = useState<LeaderboardPeriod>("weekly");
   const [weekOffset, setWeekOffset] = useState(0);
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      const res = await fetch(`/api/leaderboard?week=${weekOffset}`, { cache: "no-store" });
+      const res = await fetch(`/api/leaderboard?period=${period}&week=${weekOffset}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       setData(await res.json());
       setLastRefresh(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load leaderboard");
     }
-  }, [weekOffset]);
+  }, [period, weekOffset]);
 
   useEffect(() => {
     fetch("/api/sales-contest", { cache: "no-store" })
@@ -153,10 +159,10 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     load();
-    const refresh = weekOffset === 0 ? setInterval(load, 60_000) : null;
+    const refresh = period === "weekly" && weekOffset === 0 ? setInterval(load, 60_000) : null;
     const counter = setInterval(() => setTick((t) => t + 1), 1000);
     return () => { if (refresh) clearInterval(refresh); clearInterval(counter); };
-  }, [load, weekOffset]);
+  }, [load, period, weekOffset]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -191,6 +197,11 @@ export default function LeaderboardPage() {
 
   const secSinceRefresh = lastRefresh ? Math.floor((Date.now() - lastRefresh.getTime()) / 1000) : 0;
   const secUntilNext = Math.max(60 - secSinceRefresh, 0);
+  const activeRangeLabel = data
+    ? data.period === "all-time"
+      ? "All time"
+      : `${shortDate(data.periodStart)} — ${new Date(data.periodEnd + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+    : "—";
 
   function thCls(key: SortKey) {
     return `cursor-pointer select-none hover:text-slate-400 transition-colors ${sortKey === key ? "text-slate-400" : "text-slate-600"}`;
@@ -211,7 +222,7 @@ export default function LeaderboardPage() {
           <div className="w-px h-6 bg-white/10" />
           <div>
             <Image src="/oath-logo-white.png" alt="Oath Logistics" width={110} height={43} priority />
-            <p className="text-slate-500 text-xs mt-0.5 uppercase tracking-widest">Weekly Leaderboard</p>
+            <p className="text-slate-500 text-xs mt-0.5 uppercase tracking-widest">{data?.periodLabel ?? "Weekly"} Leaderboard</p>
           </div>
         </div>
 
@@ -275,30 +286,34 @@ export default function LeaderboardPage() {
             </button>
           </div>
 
-          {/* Week navigation + date */}
+          {/* Period navigation + active date range */}
           <div className="text-right">
             <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setWeekOffset((w) => Math.max(w - 1, -5))}
-                className="text-slate-500 hover:text-white transition-colors p-1"
-                title="Previous week"
-              >
-                ‹
-              </button>
+              {period === "weekly" && (
+                <button
+                  onClick={() => setWeekOffset((w) => Math.max(w - 1, -5))}
+                  className="text-slate-500 hover:text-white transition-colors p-1"
+                  title="Previous week"
+                >
+                  ‹
+                </button>
+              )}
               <p className="text-sm sm:text-base font-semibold text-slate-200 min-w-[160px]">
-                {data ? weekRangeLabel(data.weekStart) : "—"}
+                {activeRangeLabel}
               </p>
-              <button
-                onClick={() => setWeekOffset((w) => Math.min(w + 1, 0))}
-                disabled={weekOffset >= 0}
-                className={`p-1 transition-colors ${weekOffset >= 0 ? "text-slate-800 cursor-not-allowed" : "text-slate-500 hover:text-white"}`}
-                title="Next week"
-              >
-                ›
-              </button>
+              {period === "weekly" && (
+                <button
+                  onClick={() => setWeekOffset((w) => Math.min(w + 1, 0))}
+                  disabled={weekOffset >= 0}
+                  className={`p-1 transition-colors ${weekOffset >= 0 ? "text-slate-800 cursor-not-allowed" : "text-slate-500 hover:text-white"}`}
+                  title="Next week"
+                >
+                  ›
+                </button>
+              )}
             </div>
             <div className="flex items-center justify-end gap-2 mt-0.5">
-              {weekOffset === 0 ? (
+              {period === "weekly" && weekOffset === 0 ? (
                 <>
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -308,14 +323,14 @@ export default function LeaderboardPage() {
                     {error ? "Error" : `Live · ${secUntilNext}s`}
                   </p>
                 </>
-              ) : (
+              ) : period === "weekly" ? (
                 <button
                   onClick={() => setWeekOffset(0)}
                   className="text-xs text-emerald-500 hover:text-emerald-400 transition-colors"
                 >
                   ← Back to this week
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -323,6 +338,28 @@ export default function LeaderboardPage() {
 
       {/* Search bar */}
       <div className="px-4 sm:px-8 pt-4">
+        <div className="flex flex-wrap items-center gap-2 mb-3" role="group" aria-label="Leaderboard period">
+          {([
+            ["weekly", "Weekly"],
+            ["monthly", "Monthly"],
+            ["quarterly", "Quarterly"],
+            ["yearly", "Yearly"],
+            ["all-time", "All-Time"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => { setPeriod(value); setWeekOffset(0); }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+                period === value
+                  ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
+                  : "border-white/[0.08] text-slate-500 hover:text-slate-300 hover:border-white/20"
+              }`}
+              aria-pressed={period === value}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="relative max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
           <input
@@ -385,7 +422,7 @@ export default function LeaderboardPage() {
                     <th className="text-right py-3 px-3 border-l border-white/[0.06] text-slate-600 text-[10px] uppercase tracking-widest">4-Wk Avg</th>
                     <th className="text-right py-3 pl-3 text-slate-600 text-[10px] uppercase tracking-widest">vs Avg</th>
                     <th className={`text-left py-3 pl-6 min-w-[220px] ${thCls("goalPct")}`} onClick={() => handleSort("goalPct")}>
-                      Goal Progress <SortIcon col="goalPct" sortKey={sortKey} dir={sortDir} />
+                      {period === "weekly" ? "Goal Progress" : "Period Margin"} {period === "weekly" && <SortIcon col="goalPct" sortKey={sortKey} dir={sortDir} />}
                     </th>
                     <th className="text-right py-3 px-3 border-l border-white/[0.06] text-amber-500/80">Best Week</th>
                     <th className="text-right py-3 pl-3 text-slate-600">Date</th>
@@ -483,7 +520,7 @@ export default function LeaderboardPage() {
                           <DeltaBadge delta={b.marginDelta} />
                         </td>
                         <td className="py-4 pl-6">
-                          {b.weeklyGoal > 0 ? (
+                          {period === "weekly" ? b.weeklyGoal > 0 ? (
                             <div className="min-w-[180px]">
                               <div className="flex justify-between items-baseline mb-1.5">
                                 <span className="text-xs text-slate-400 tabular-nums font-medium">{fmt(b.current.margin)}</span>
@@ -523,6 +560,11 @@ export default function LeaderboardPage() {
                               <p className="text-xs text-white/70 mt-1.5 text-right">
                                 {b.goalStartDate ? `ramping up · goal ${shortDate(b.goalStartDate)}` : "ramping up"}
                               </p>
+                            </div>
+                          ) : (
+                            <div className="min-w-[180px] text-right">
+                              <span className="text-base font-semibold text-emerald-400 tabular-nums">{fmt(b.current.margin)}</span>
+                              <p className="text-xs text-slate-600 mt-1">{data.periodLabel} margin</p>
                             </div>
                           )}
                         </td>
@@ -590,7 +632,7 @@ export default function LeaderboardPage() {
                     </div>
 
                     {/* Goal progress */}
-                    {b.weeklyGoal > 0 ? (
+                    {period === "weekly" ? b.weeklyGoal > 0 ? (
                       <div>
                         <div className="flex justify-between items-baseline mb-1">
                           <span className="text-xs text-slate-500">Goal: {fmt(b.weeklyGoal)}</span>
@@ -626,6 +668,11 @@ export default function LeaderboardPage() {
                         <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
                           <div className="h-full w-full rounded-full bg-emerald-400" />
                         </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500">{data.periodLabel} margin</span>
+                        <span className="text-sm font-semibold text-emerald-400 tabular-nums">{fmt(b.current.margin)}</span>
                       </div>
                     )}
 
