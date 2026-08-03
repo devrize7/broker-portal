@@ -50,6 +50,22 @@ interface ContestBroker {
   newCustomerCount: number;
 }
 
+interface ContestAwards {
+  mostNewCustomers: { brokers: string[]; count: number } | null;
+  topNewCustomer: { entries: Array<{ broker: string; customer: string }>; gp: number } | null;
+  midpointLeader: { brokers: string[]; gp: number } | null;
+  midpointDate: string;
+  midpointReached: boolean;
+}
+
+interface ContestData {
+  brokers: ContestBroker[];
+  contestStart: string;
+  contestEnd: string;
+  contestOver: boolean;
+  awards: ContestAwards;
+}
+
 type SortKey = "margin" | "loads" | "revenue" | "marginPct" | "avgPerLoad" | "goalPct";
 type SortDir = "asc" | "desc";
 
@@ -105,6 +121,64 @@ function SortIcon({ col, sortKey, dir }: { col: SortKey; sortKey: SortKey; dir: 
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
+/** Whole days from now until the contest's final day (never negative). */
+function daysLeft(endYmd: string) {
+  const end = new Date(endYmd + "T23:59:59").getTime();
+  return Math.max(0, Math.ceil((end - Date.now()) / 86_400_000));
+}
+
+/**
+ * Podium prizes, in rank order — tile N shows whoever currently sits at
+ * standings[N], so the board reads as "what am I playing for" rather than a
+ * static copy of the flyer.
+ */
+const podiumPrizes = [
+  { label: "Grand Champion", prize: "NFL Game or Offshore Charter", value: 1500 },
+  { label: "Second", prize: "Inshore Fishing Experience", value: 1100 },
+  { label: "Third", prize: "Traeger, Blackstone or Tech Package", value: 700 },
+];
+
+function AwardTile({
+  icon, label, prize, value, holder, detail, pending = false,
+}: {
+  icon: string;
+  label: string;
+  prize: string;
+  value: number;
+  /** Current leader, or null when the award has no holder yet. */
+  holder: string | null;
+  detail?: string;
+  /** True while the award cannot be decided yet (the midpoint prize before Oct 11). */
+  pending?: boolean;
+}) {
+  return (
+    <div className={`rounded-lg border p-3 ${holder ? "border-amber-500/25 bg-amber-500/[0.04]" : "border-white/[0.06] bg-white/[0.02]"}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold text-slate-300 truncate">
+            <span className="mr-1">{icon}</span>{label}
+          </p>
+          <p className="text-[10px] text-slate-600 truncate">{prize}</p>
+        </div>
+        <span className="text-[11px] font-bold text-amber-400/90 tabular-nums shrink-0">{fmt(value)}</span>
+      </div>
+      <div className="mt-2 pt-2 border-t border-white/[0.05]">
+        {holder ? (
+          <>
+            <p className="text-xs font-semibold text-white truncate">{holder}</p>
+            {detail && <p className="text-[10px] text-slate-500 truncate">{detail}</p>}
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-slate-600">{pending ? "Not yet decided" : "Up for grabs"}</p>
+            {detail && <p className="text-[10px] text-slate-700 truncate">{detail}</p>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function sortBrokers(rows: BrokerRow[], key: SortKey, dir: SortDir): BrokerRow[] {
   return [...rows].sort((a, b) => {
     let av = 0, bv = 0;
@@ -127,7 +201,7 @@ export default function LeaderboardPage() {
   const isAdmin = sessionUser?.isAdmin ?? false;
 
   const [data, setData] = useState<LeaderboardData | null>(null);
-  const [contestData, setContestData] = useState<ContestBroker[] | null>(null);
+  const [contest, setContest] = useState<ContestData | null>(null);
   const [expandedContest, setExpandedContest] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -153,7 +227,7 @@ export default function LeaderboardPage() {
   useEffect(() => {
     fetch("/api/sales-contest", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => setContestData(d.brokers ?? []))
+      .then((d) => { if (Array.isArray(d?.brokers)) setContest(d as ContestData); })
       .catch(() => {});
   }, []);
 
@@ -694,29 +768,108 @@ export default function LeaderboardPage() {
       </div>
 
       {/* Sales Contest */}
-      {contestData && (
+      {contest && (
         <div className="max-w-6xl mx-auto px-4 sm:px-8 pb-12 mt-8">
           <div className="rounded-xl border border-amber-500/30 bg-[#0d1220]">
-            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
                 <Flame className="w-5 h-5 text-amber-500" />
-                <h2 className="text-sm font-bold uppercase tracking-wider text-white">Sales Contest — New Customer Challenge</h2>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-white">2026 Finish Strong Sales Championship</h2>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-slate-500 border border-white/[0.08] rounded-full px-2.5 py-0.5 uppercase tracking-wider">
-                  Feb 20 — Jul 26, 2026
+                  {shortDate(contest.contestStart)} — {shortDate(contest.contestEnd)}, 2026
                 </span>
-                <span className="text-[10px] text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
-                  Final standings
-                </span>
+                {contest.contestOver ? (
+                  <span className="text-[10px] text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                    Final standings
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-amber-300 border border-amber-500/40 bg-amber-500/10 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                    {daysLeft(contest.contestEnd)} days left
+                  </span>
+                )}
               </div>
             </div>
+
+            {/* Championship prizes — the flyer's right column, with who currently holds each. */}
+            <div className="px-4 pt-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Championship prizes</h3>
+                <span className="text-[10px] text-slate-600 uppercase tracking-wider">Prize pool over $5,000</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {podiumPrizes.map((prize, i) => {
+                  const holder = contest.brokers[i];
+                  const held = holder && holder.totalGP > 0;
+                  return (
+                    <AwardTile
+                      key={prize.label}
+                      icon={MEDALS[i]}
+                      label={prize.label}
+                      prize={prize.prize}
+                      value={prize.value}
+                      holder={held ? holder.broker : null}
+                      detail={held ? fmt(holder.totalGP) : undefined}
+                    />
+                  );
+                })}
+                <AwardTile
+                  icon="🧊"
+                  label="Most New Customers"
+                  prize="YETI Package"
+                  value={500}
+                  holder={contest.awards.mostNewCustomers?.brokers.join(" & ") ?? null}
+                  detail={
+                    contest.awards.mostNewCustomers
+                      ? `${contest.awards.mostNewCustomers.count} new ${contest.awards.mostNewCustomers.count === 1 ? "account" : "accounts"}`
+                      : undefined
+                  }
+                />
+                <AwardTile
+                  icon="💎"
+                  label="Highest Margin New Customer"
+                  prize="Premium OATH Gear"
+                  value={400}
+                  holder={
+                    contest.awards.topNewCustomer
+                      ? contest.awards.topNewCustomer.entries.map((e) => e.broker).join(" & ")
+                      : null
+                  }
+                  detail={
+                    contest.awards.topNewCustomer
+                      ? `${contest.awards.topNewCustomer.entries.map((e) => e.customer).join(", ")} · ${fmt(contest.awards.topNewCustomer.gp)}`
+                      : undefined
+                  }
+                />
+                <AwardTile
+                  icon="🍽️"
+                  label="Midpoint Leader"
+                  prize="Dinner & Hotel Experience"
+                  value={500}
+                  holder={contest.awards.midpointLeader?.brokers.join(" & ") ?? null}
+                  detail={
+                    contest.awards.midpointLeader
+                      ? fmt(contest.awards.midpointLeader.gp)
+                      : contest.awards.midpointReached
+                        ? undefined
+                        : `Decided ${shortDate(contest.awards.midpointDate)}`
+                  }
+                  pending={!contest.awards.midpointReached}
+                />
+              </div>
+            </div>
+
             <div className="p-4">
-              <p className="text-xs text-slate-600 mb-4">
-                First load with a brand new customer since contest kickoff. Ranked by total gross profit.
+              <p className="text-xs text-slate-500 mb-1">
+                Ranked by gross margin from <span className="text-slate-300">brand new customers</span> — accounts that had never
+                shipped with Oath before {shortDate(contest.contestStart)}.
+              </p>
+              <p className="text-[11px] text-slate-600 mb-4">
+                Clean files required · must exceed your individual sales goal to qualify · management determines final eligibility.
               </p>
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {contestData.map((b, i) => {
+                {contest.brokers.map((b, i) => {
                   const isTop = i === 0 && b.totalGP > 0;
                   const rank = b.totalGP > 0 ? (i < 3 ? MEDALS[i] : `#${i + 1}`) : "";
                   const isExpanded = expandedContest.has(b.broker);
@@ -751,7 +904,7 @@ export default function LeaderboardPage() {
                                 <div className="min-w-0 flex-1">
                                   <p className="font-medium text-slate-300 truncate">{c.customer}</p>
                                   <p className="text-slate-600">
-                                    {c.loads} loads · first {c.firstPickup ? new Date(c.firstPickup).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
+                                    {c.loads} loads · first {shortDate(c.firstPickup)}
                                   </p>
                                 </div>
                                 <span className={`ml-2 font-semibold shrink-0 tabular-nums ${c.gp >= 0 ? "text-emerald-400" : "text-red-400"}`}>
