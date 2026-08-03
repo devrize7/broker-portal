@@ -3,19 +3,62 @@ import { requireSession } from "@/lib/route-auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames, isSalesContestExcluded } from "@/lib/broker-mapping";
 import { getRoster } from "@/lib/roster";
+import { EXCLUDED_STATUSES, etYmd, fetchCountableLoads } from "@/lib/load-query";
 import { trueMargin, trueRevenue } from "@/lib/margin";
+import {
+  CONTEST_START,
+  CONTEST_END,
+  CONTEST_MIDPOINT,
+  inContestWindow,
+  midpointLeader,
+  midpointReached,
+  mostNewCustomers,
+  rankBrokers,
+  topNewCustomer,
+  type ContestLoad,
+} from "@/lib/sales-contest";
 
 export const dynamic = "force-dynamic";
 
-const CONTEST_START = "2026-02-20";
-// Contest ran through Sunday July 26, 11:59pm ET. pickupDate is stored as a
-// noon-UTC calendar-date stamp (2026-07-26T12:00:00+00:00), so "through Jul 26
-// ET" is exactly pickupDate < '2026-07-27' — no TZ math needed. Without this
-// bound the standings kept accruing post-contest loads (caught 2026-07-27:
-// five brokers had already gained $25–$650 of after-the-bell GP, with the
-// #1/#2 gap at just ~$575).
-const CONTEST_END_EXCLUSIVE = "2026-07-27";
-const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
+/**
+ * Every customer that had already SHIPPED before kickoff — the contest's
+ * "new customer" test is the complement of this set.
+ *
+ * Deliberately its own query rather than a slice of fetchCountableLoads():
+ * this answers "have they ever shipped with us", not "how much did we make",
+ * so the profitability-CSV week rule (which drops untagged loads inside a
+ * CSV-covered week to avoid double-counting revenue) must not apply — it
+ * could drop a customer's only historical load and make a long-standing
+ * account read as brand new.
+ *
+ * The status filter DOES apply: an account we only ever quoted or that
+ * cancelled has never been a customer, so landing them now is a genuinely new
+ * account. Measured before shipping — 5 such accounts exist pre-kickoff
+ * (incl. "Oath Logistics Test Customer") and none have shipped in the contest
+ * window, so this is behaviour-neutral today and correct going forward.
+ */
+async function fetchExistingCustomers(): Promise<Set<string>> {
+  const placeholders = EXCLUDED_STATUSES.map(() => "?").join(",");
+  const result = await db.execute({
+    sql: `SELECT customer, MIN(pickupDate) firstPickup FROM Load
+          WHERE customer IS NOT NULL AND pickupDate IS NOT NULL
+            AND status NOT IN (${placeholders})
+          GROUP BY customer`,
+    args: [...EXCLUDED_STATUSES],
+  });
+
+  const existing = new Set<string>();
+  for (const row of result.rows) {
+    // ET-dated for the same reason the contest window is: a load stamped
+    // 02:00 UTC on kickoff day is the evening BEFORE in New York. Timestamps
+    // are UTC in both stored spellings ("…Z" and "…+00:00"), so MIN() is the
+    // genuine earliest instant and its ET date is the earliest ET date.
+    if (etYmd(String(row.firstPickup)) < CONTEST_START) {
+      existing.add(String(row.customer));
+    }
+  }
+  return existing;
+}
 
 export async function GET() {
   const { session, response } = await requireSession();
@@ -25,102 +68,51 @@ export async function GET() {
     const roster = await getRoster();
     const activeBrokers = getActiveBrokerNames(roster);
 
-    // Run both queries concurrently
-    const [contestResult, preContestResult] = await Promise.all([
-      db.execute({
-        sql: `SELECT salesRep, customer, revenue, carrierCost, lumperRevenue, lumperCost, pickupDate, status
-              FROM Load WHERE pickupDate >= ? AND pickupDate < ? AND customer IS NOT NULL`,
-        args: [CONTEST_START, CONTEST_END_EXCLUSIVE],
-      }),
-      db.execute({
-        sql: `SELECT DISTINCT customer FROM Load WHERE pickupDate < ? AND customer IS NOT NULL`,
-        args: [CONTEST_START],
-      }),
+    const [allLoads, existingCustomers] = await Promise.all([
+      fetchCountableLoads(),
+      fetchExistingCustomers(),
     ]);
 
-    const existingCustomers = new Set<string>();
-    for (const row of preContestResult.rows) {
-      existingCustomers.add(row.customer as string);
-    }
+    const contestLoads: ContestLoad[] = [];
+    for (const load of allLoads) {
+      if (!inContestWindow(load.pickupYmd)) continue;
+      if (!load.customer || !load.salesRep) continue;
+      if (existingCustomers.has(load.customer)) continue;
 
-    const contestMap = new Map<string, Map<string, { loads: number; gp: number; revenue: number; firstPickup: string }>>();
-
-    for (const row of contestResult.rows) {
-      const status = (row.status as string || "").toLowerCase();
-      if (EXCLUDED_STATUSES.includes(status)) continue;
-
-      const revenueRaw = Number(row.revenue) || 0;
-      const carrierCost = Number(row.carrierCost) || 0;
-      if (revenueRaw === 0 && carrierCost === 0) continue;
-      // Lumper pass-through netted out (see lib/margin.ts).
-      const margin = trueMargin(revenueRaw, carrierCost, Number(row.lumperRevenue) || 0, Number(row.lumperCost) || 0);
-      const revenue = trueRevenue(revenueRaw, Number(row.lumperRevenue) || 0);
-
-      const salesRep = row.salesRep as string;
-      const customer = row.customer as string;
-      if (!salesRep || !customer) continue;
-
-      // Skip existing customers
-      if (existingCustomers.has(customer)) continue;
-
-      const reps = salesRep.split(",").map((r) => r.trim());
-      let activeBroker: string | null = null;
-      for (const r of reps) {
-        const { broker, isActive } = resolveActiveBroker(roster, r);
-        if (isActive) { activeBroker = broker; break; }
-      }
-      if (!activeBroker) continue;
+      const { broker, isActive } = resolveActiveBroker(roster, load.salesRep);
+      if (!isActive) continue;
       // Account-manager-only credit (e.g. Ivan/Cleveland Kitchen) — broker keeps
       // leaderboard/profit credit but doesn't earn sales contest standing.
-      if (isSalesContestExcluded(activeBroker, customer)) continue;
+      if (isSalesContestExcluded(broker, load.customer)) continue;
 
-      if (!contestMap.has(activeBroker)) contestMap.set(activeBroker, new Map());
-      const brokerMap = contestMap.get(activeBroker)!;
-      const existing = brokerMap.get(customer) || { loads: 0, gp: 0, revenue: 0, firstPickup: "2099-01-01" };
-      existing.loads++;
-      existing.gp += margin;
-      existing.revenue += revenue;
-      const pickup = row.pickupDate as string;
-      if (pickup && pickup < existing.firstPickup) existing.firstPickup = pickup;
-      brokerMap.set(customer, existing);
+      contestLoads.push({
+        broker,
+        customer: load.customer,
+        // Lumper pass-through netted out (see lib/margin.ts).
+        gp: trueMargin(load.revenue, load.carrierCost, load.lumperRevenue, load.lumperCost),
+        revenue: trueRevenue(load.revenue, load.lumperRevenue),
+        pickupYmd: load.pickupYmd,
+      });
     }
 
-    const brokers = Array.from(contestMap.entries())
-      .map(([broker, customers]) => {
-        const customerList = Array.from(customers.entries())
-          .map(([customer, data]) => ({
-            customer,
-            loads: data.loads,
-            gp: Math.round(data.gp * 100) / 100,
-            revenue: Math.round(data.revenue * 100) / 100,
-            firstPickup: data.firstPickup,
-          }))
-          .sort((a, b) => b.gp - a.gp);
-        return {
-          broker,
-          customers: customerList,
-          totalGP: customerList.reduce((s, c) => s + c.gp, 0),
-          totalLoads: customerList.reduce((s, c) => s + c.loads, 0),
-          totalRevenue: customerList.reduce((s, c) => s + c.revenue, 0),
-          newCustomerCount: customerList.length,
-        };
-      })
-      .sort((a, b) => b.totalGP - a.totalGP);
-
-    // Ensure all active brokers appear
-    for (const name of activeBrokers) {
-      if (!brokers.find((b) => b.broker === name)) {
-        brokers.push({ broker: name, customers: [], totalGP: 0, totalLoads: 0, totalRevenue: 0, newCustomerCount: 0 });
-      }
-    }
+    const brokers = rankBrokers(contestLoads, activeBrokers);
+    const today = etYmd(new Date().toISOString());
 
     return NextResponse.json({
       brokers,
       contestStart: CONTEST_START,
-      // Inclusive final day (the bound above is exclusive) — the UI renders
-      // this as "Final — ended Jul 26".
-      contestEnd: "2026-07-26",
-      contestOver: true,
+      contestEnd: CONTEST_END,
+      contestOver: today > CONTEST_END,
+      awards: {
+        mostNewCustomers: mostNewCustomers(brokers),
+        topNewCustomer: topNewCustomer(brokers),
+        // Before the midpoint this stays null and the card shows the award as
+        // still up for grabs — crowning a "midpoint leader" in week 2 would be
+        // announcing a winner of a race that is not half run.
+        midpointLeader: midpointReached(today) ? midpointLeader(contestLoads) : null,
+        midpointDate: CONTEST_MIDPOINT,
+        midpointReached: midpointReached(today),
+      },
     });
   } catch (err) {
     console.error("Sales contest error:", err);
