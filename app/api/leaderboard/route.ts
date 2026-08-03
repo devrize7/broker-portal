@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames } from "@/lib/broker-mapping";
 import { getRoster, getWeeklyGoal, getRampStatus } from "@/lib/roster";
 import { trueMargin, trueRevenue } from "@/lib/margin";
+import { parseLeaderboardPeriod, resolveLeaderboardPeriod } from "@/lib/leaderboard-periods";
 
 export const dynamic = "force-dynamic";
 
@@ -57,11 +58,90 @@ export async function GET(request: NextRequest) {
   try {
     const roster = await getRoster();
     const now = new Date();
+    const period = parseLeaderboardPeriod(request.nextUrl.searchParams.get("period"));
+    const weekOffset = parseInt(request.nextUrl.searchParams.get("week") || "0", 10);
+
+    // Weekly remains the original leaderboard path below, including its goals,
+    // pace, rolling average, and record-week calculations. Other periods reuse
+    // the same TIE/TMS load columns and broker mapping, changing only the
+    // date-window aggregation.
+    if (period !== "weekly") {
+      const range = resolveLeaderboardPeriod(period, { now });
+      const loadsResult = await db.execute({
+        sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost FROM Load`,
+      });
+      const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
+      interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null; status: string | null; lumperRevenue: number; lumperCost: number }
+      const allLoads: LoadRow[] = loadsResult.rows.map((row) => ({
+        salesRep: row[0] as string | null,
+        revenue: Number(row[1]) || 0,
+        carrierCost: Number(row[2]) || 0,
+        pickupDate: row[3] as string,
+        profWeek: row[4] as string | null,
+        status: row[5] as string | null,
+        lumperRevenue: Number(row[6]) || 0,
+        lumperCost: Number(row[7]) || 0,
+      }));
+      const currentByBroker: Record<string, { loads: number; revenue: number; margin: number }> = {};
+
+      for (const load of allLoads) {
+        if (load.revenue === 0 && load.carrierCost === 0) continue;
+        if (!load.profWeek && EXCLUDED_STATUSES.includes((load.status || "").toLowerCase())) continue;
+        const periodKey = load.profWeek || getMondayOf(new Date(load.pickupDate)).toISOString().slice(0, 10);
+        if (periodKey < range.from || periodKey >= range.toExclusive) continue;
+        const { broker, isActive } = resolveActiveBroker(roster, load.salesRep);
+        if (!isActive) continue;
+        if (!currentByBroker[broker]) currentByBroker[broker] = { loads: 0, revenue: 0, margin: 0 };
+        currentByBroker[broker].loads += 1;
+        currentByBroker[broker].revenue += trueRevenue(load.revenue, load.lumperRevenue);
+        currentByBroker[broker].margin += trueMargin(load.revenue, load.carrierCost, load.lumperRevenue, load.lumperCost);
+      }
+
+      const rows = getActiveBrokerNames(roster).map((broker) => {
+        const current = currentByBroker[broker] || { loads: 0, revenue: 0, margin: 0 };
+        return {
+          broker,
+          weeklyGoal: 0,
+          ramping: false,
+          rampWeeksLeft: 0,
+          goalStartDate: null,
+          current: {
+            ...current,
+            avgPerLoad: current.loads > 0 ? current.margin / current.loads : 0,
+            marginPct: current.revenue > 0 ? (current.margin / current.revenue) * 100 : 0,
+          },
+          rolling4wAvg: { loads: 0, margin: 0 },
+          goalPct: null,
+          paceStatus: "no_goal" as const,
+          pacedGoal: 0,
+          marginDelta: null,
+          record: { amount: 0, weekOf: "" },
+        };
+      });
+      rows.sort((a, b) => {
+        if (a.current.loads === 0 && b.current.loads > 0) return 1;
+        if (a.current.loads > 0 && b.current.loads === 0) return -1;
+        return b.current.margin - a.current.margin;
+      });
+
+      return NextResponse.json({
+        period,
+        periodStart: range.from,
+        periodEnd: range.toDisplay,
+        periodLabel: range.label,
+        weekStart: range.from,
+        weekOffset: 0,
+        isCurrentWeek: false,
+        updatedAt: now.toISOString(),
+        paceFactor: 1,
+        brokers: rows,
+      });
+    }
+
     const thisMonday = getMondayOf(now);
     const thisMondayKey = thisMonday.toISOString().slice(0, 10);
 
     // Week offset: 0 = current, -1 = last week, -2 = 2 weeks ago, etc.
-    const weekOffset = parseInt(request.nextUrl.searchParams.get("week") || "0", 10);
     const targetMonday = new Date(thisMonday);
     targetMonday.setDate(targetMonday.getDate() + weekOffset * 7);
     const targetMondayKey = targetMonday.toISOString().slice(0, 10);
@@ -272,6 +352,10 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
+      period,
+      periodStart: targetMondayKey,
+      periodEnd: weekEndKey(targetMondayKey),
+      periodLabel: "Weekly",
       weekStart: targetMondayKey,
       weekOffset,
       isCurrentWeek,
