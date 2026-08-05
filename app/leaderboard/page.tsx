@@ -96,14 +96,14 @@ function PaceChip({ status }: { status: BrokerRow["paceStatus"] }) {
     no_goal: { label: "Ahead",   cls: "bg-emerald-900/50 text-emerald-300 border-emerald-700/40" },
   }[status];
   return (
-    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${cfg.cls}`}>
+    <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${cfg.cls}`}>
       {cfg.label}
     </span>
   );
 }
 
 function DeltaBadge({ delta }: { delta: number | null }) {
-  if (delta === null) return <span className="text-slate-600 text-sm">—</span>;
+  if (delta === null) return <span className="text-slate-400 text-sm">—</span>;
   const pos = delta >= 0;
   return (
     <span className={`text-sm font-semibold tabular-nums ${pos ? "text-emerald-400" : "text-red-400"}`}>
@@ -113,7 +113,7 @@ function DeltaBadge({ delta }: { delta: number | null }) {
 }
 
 function SortIcon({ col, sortKey, dir }: { col: SortKey; sortKey: SortKey; dir: SortDir }) {
-  if (col !== sortKey) return <ChevronUp className="w-3 h-3 text-slate-700 inline ml-0.5" />;
+  if (col !== sortKey) return <ChevronUp className="w-3 h-3 text-slate-500 inline ml-0.5" />;
   return dir === "desc"
     ? <ChevronDown className="w-3 h-3 text-slate-400 inline ml-0.5" />
     : <ChevronUp className="w-3 h-3 text-slate-400 inline ml-0.5" />;
@@ -154,11 +154,12 @@ function AwardTile({
   return (
     <div className={`rounded-lg border p-3 ${holder ? "border-amber-500/25 bg-amber-500/[0.04]" : "border-white/[0.06] bg-white/[0.02]"}`}>
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-white truncate">
-            <span className="mr-1.5">{icon}</span>{label}
-          </p>
-          <p className="text-xs text-slate-400 truncate">{prize}</p>
+        <div className="flex items-start gap-2.5 min-w-0">
+          <span className="text-3xl leading-none shrink-0" aria-hidden="true">{icon}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{label}</p>
+            <p className="text-xs text-slate-400 truncate">{prize}</p>
+          </div>
         </div>
         <span className="text-base font-bold text-amber-400 tabular-nums shrink-0">{fmt(value)}</span>
       </div>
@@ -278,7 +279,7 @@ export default function LeaderboardPage() {
     : "—";
 
   function thCls(key: SortKey) {
-    return `cursor-pointer select-none hover:text-slate-400 transition-colors ${sortKey === key ? "text-slate-400" : "text-slate-600"}`;
+    return `cursor-pointer select-none hover:text-white transition-colors ${sortKey === key ? "text-white" : "text-slate-400"}`;
   }
 
   return (
@@ -305,19 +306,19 @@ export default function LeaderboardPage() {
           {data && (
             <div className="hidden md:flex items-center gap-4 lg:gap-6 pr-4 lg:pr-6 border-r border-white/10">
               <div className="text-right">
-                <p className="text-xs text-slate-600 uppercase tracking-wider">Loads</p>
+                <p className="text-xs text-slate-400 uppercase tracking-wider">Loads</p>
                 <p className="text-lg lg:text-xl font-bold text-white">{totals.loads}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-slate-600 uppercase tracking-wider">Revenue</p>
+                <p className="text-xs text-slate-400 uppercase tracking-wider">Revenue</p>
                 <p className="text-lg lg:text-xl font-bold text-white">{fmt(totals.revenue)}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-slate-600 uppercase tracking-wider">Margin</p>
+                <p className="text-xs text-slate-400 uppercase tracking-wider">Margin</p>
                 <p className="text-lg lg:text-xl font-bold text-emerald-400">{fmt(totals.margin, 2)}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-slate-600 uppercase tracking-wider">Margin %</p>
+                <p className="text-xs text-slate-400 uppercase tracking-wider">Margin %</p>
                 <p className="text-lg lg:text-xl font-bold text-emerald-400">{totalMarginPct.toFixed(1)}%</p>
               </div>
             </div>
@@ -354,7 +355,7 @@ export default function LeaderboardPage() {
             )}
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
-              className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+              className="text-xs text-slate-400 hover:text-white transition-colors"
             >
               Sign out
             </button>
@@ -435,7 +436,7 @@ export default function LeaderboardPage() {
           ))}
         </div>
         <div className="relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <input
             type="text"
             placeholder="Search broker…"
@@ -466,7 +467,7 @@ export default function LeaderboardPage() {
             </div>
           </div>
         ) : sortedActive.length === 0 ? (
-          <div className="flex items-center justify-center h-64 text-slate-600">
+          <div className="flex items-center justify-center h-64 text-slate-400">
             No brokers match &ldquo;{search}&rdquo;
           </div>
         ) : (
@@ -475,9 +476,9 @@ export default function LeaderboardPage() {
             <div className="hidden md:block">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="text-[10px] uppercase tracking-widest border-b border-white/[0.06]">
-                    <th className="text-left py-3 pr-4 w-10 text-slate-600">#</th>
-                    <th className="text-left py-3 pr-4 min-w-[140px] text-slate-600">Broker</th>
+                  <tr className="text-xs uppercase tracking-widest border-b border-white/[0.06]">
+                    <th className="text-left py-3 pr-4 w-10 text-slate-400">#</th>
+                    <th className="text-left py-3 pr-4 min-w-[140px] text-slate-400">Broker</th>
                     <th className={`text-right py-3 px-3 ${thCls("loads")}`} onClick={() => handleSort("loads")}>
                       Loads <SortIcon col="loads" sortKey={sortKey} dir={sortDir} />
                     </th>
@@ -493,13 +494,13 @@ export default function LeaderboardPage() {
                     <th className={`text-right py-3 px-3 ${thCls("avgPerLoad")}`} onClick={() => handleSort("avgPerLoad")}>
                       Avg / Load <SortIcon col="avgPerLoad" sortKey={sortKey} dir={sortDir} />
                     </th>
-                    <th className="text-right py-3 px-3 border-l border-white/[0.06] text-slate-600 text-[10px] uppercase tracking-widest">4-Wk Avg</th>
-                    <th className="text-right py-3 pl-3 text-slate-600 text-[10px] uppercase tracking-widest">vs Avg</th>
+                    <th className="text-right py-3 px-3 border-l border-white/[0.06] text-slate-400 text-xs uppercase tracking-widest">4-Wk Avg</th>
+                    <th className="text-right py-3 pl-3 text-slate-400 text-xs uppercase tracking-widest">vs Avg</th>
                     <th className={`text-left py-3 pl-6 min-w-[220px] ${thCls("goalPct")}`} onClick={() => handleSort("goalPct")}>
                       {period === "weekly" ? "Goal Progress" : "Period Margin"} {period === "weekly" && <SortIcon col="goalPct" sortKey={sortKey} dir={sortDir} />}
                     </th>
                     <th className="text-right py-3 px-3 border-l border-white/[0.06] text-amber-500/80">Best Week</th>
-                    <th className="text-right py-3 pl-3 text-slate-600">Date</th>
+                    <th className="text-right py-3 pl-3 text-slate-400">Date</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -519,7 +520,7 @@ export default function LeaderboardPage() {
                         <td className="py-4 pr-4">
                           {isTop3
                             ? <span className="text-3xl">{MEDALS[i]}</span>
-                            : <span className="text-slate-600 text-sm font-mono">{i + 1}</span>
+                            : <span className="text-slate-400 text-base font-mono">{i + 1}</span>
                           }
                         </td>
                         <td className="py-4 pr-4">
@@ -536,7 +537,7 @@ export default function LeaderboardPage() {
                         </td>
                         <td className="py-4 px-3 text-right">
                           <span className={`font-bold tabular-nums ${
-                            idle ? "text-lg text-slate-600"
+                            idle ? "text-lg text-slate-500"
                               : isTop3 ? "text-xl text-white"
                               : "text-lg text-slate-300"
                           }`}>
@@ -545,7 +546,7 @@ export default function LeaderboardPage() {
                         </td>
                         <td className="py-4 px-3 text-right">
                           <span className={`tabular-nums ${
-                            idle ? "text-base text-slate-600"
+                            idle ? "text-base text-slate-500"
                               : isTop3 ? "text-lg text-slate-200"
                               : "text-base text-slate-400"
                           }`}>
@@ -554,7 +555,7 @@ export default function LeaderboardPage() {
                         </td>
                         <td className="py-4 px-3 text-right">
                           <span className={`font-bold tabular-nums ${
-                            idle ? "text-lg text-slate-600"
+                            idle ? "text-lg text-slate-500"
                               : b.current.margin >= 0
                               ? isTop3 ? "text-xl text-emerald-400" : "text-lg text-emerald-500"
                               : "text-lg text-red-400"
@@ -565,7 +566,7 @@ export default function LeaderboardPage() {
                         {/* A no-load week has no percentage — not a 0.0% one */}
                         <td className="py-4 px-3 text-right">
                           {idle ? (
-                            <span className="text-slate-700 text-sm">—</span>
+                            <span className="text-slate-500 text-base">—</span>
                           ) : (
                             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                               b.current.marginPct >= 10 ? "bg-emerald-900/50 text-emerald-300"
@@ -578,7 +579,7 @@ export default function LeaderboardPage() {
                         </td>
                         <td className="py-4 px-3 text-right">
                           {idle ? (
-                            <span className="text-slate-700 text-sm">—</span>
+                            <span className="text-slate-500 text-base">—</span>
                           ) : (
                             <span className={`tabular-nums ${isTop3 ? "text-lg text-slate-200" : "text-base text-slate-400"}`}>
                               {fmt(b.current.avgPerLoad, 2)}
@@ -615,10 +616,10 @@ export default function LeaderboardPage() {
                             /* No loads yet — a full green "100%" bar would be a lie.
                                Say where they are in the ramp instead. */
                             <div className="min-w-[180px]">
-                              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-sky-900/40 text-sky-300 border-sky-700/40">
+                              <span className="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-sky-900/40 text-sky-300 border-sky-700/40">
                                 Ramping
                               </span>
-                              <p className="text-xs text-slate-600 mt-1.5">
+                              <p className="text-xs text-slate-400 mt-1.5">
                                 {b.goalStartDate ? `Goal starts ${shortDate(b.goalStartDate)}` : "No goal set"}
                               </p>
                             </div>
@@ -638,14 +639,14 @@ export default function LeaderboardPage() {
                           ) : (
                             <div className="min-w-[180px] text-right">
                               <span className="text-base font-semibold text-emerald-400 tabular-nums">{fmt(b.current.margin)}</span>
-                              <p className="text-xs text-slate-600 mt-1">{data.periodLabel} margin</p>
+                              <p className="text-xs text-slate-400 mt-1">{data.periodLabel} margin</p>
                             </div>
                           )}
                         </td>
                         <td className="py-4 px-3 text-right border-l border-white/[0.06]">
                           <span className="flex items-center justify-end gap-1 tabular-nums text-base text-slate-200">
                             {b.record.amount > 0 && <Trophy className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
-                            {b.record.amount > 0 ? fmt(b.record.amount) : <span className="text-slate-600">—</span>}
+                            {b.record.amount > 0 ? fmt(b.record.amount) : <span className="text-slate-400">—</span>}
                           </span>
                         </td>
                         <td className="py-4 pl-3 text-right text-xs text-slate-500 tabular-nums">
@@ -678,7 +679,7 @@ export default function LeaderboardPage() {
                       <div className="flex items-center gap-2">
                         {isTop3
                           ? <span className="text-2xl">{MEDALS[i]}</span>
-                          : <span className="text-slate-600 text-sm font-mono w-5">{i + 1}</span>
+                          : <span className="text-slate-400 text-sm font-mono w-5">{i + 1}</span>
                         }
                         <span className={`font-bold text-base ${idle ? "text-slate-500" : "text-white"}`}>{b.broker}</span>
                         {!idle && <PaceChip status={b.paceStatus} />}
@@ -688,19 +689,19 @@ export default function LeaderboardPage() {
                     {/* Key metrics row */}
                     <div className="grid grid-cols-3 gap-3 mb-3">
                       <div>
-                        <p className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">Margin</p>
+                        <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Margin</p>
                         <p className={`font-bold tabular-nums text-base ${
-                          idle ? "text-slate-600" : b.current.margin >= 0 ? "text-emerald-400" : "text-red-400"
+                          idle ? "text-slate-500" : b.current.margin >= 0 ? "text-emerald-400" : "text-red-400"
                         }`}>
                           {fmt(b.current.margin)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">Revenue</p>
+                        <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Revenue</p>
                         <p className="text-slate-300 tabular-nums text-sm">{fmt(b.current.revenue)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">Loads</p>
+                        <p className="text-xs text-slate-400 uppercase tracking-wider mb-0.5">Loads</p>
                         <p className="text-slate-300 font-bold tabular-nums text-sm">{b.current.loads}</p>
                       </div>
                     </div>
@@ -724,10 +725,10 @@ export default function LeaderboardPage() {
                       </div>
                     ) : idle ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-sky-900/40 text-sky-300 border-sky-700/40">
+                        <span className="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-sky-900/40 text-sky-300 border-sky-700/40">
                           Ramping
                         </span>
-                        <span className="text-xs text-slate-600">
+                        <span className="text-xs text-slate-400">
                           {b.goalStartDate ? `Goal starts ${shortDate(b.goalStartDate)}` : "No goal set"}
                         </span>
                       </div>
@@ -755,7 +756,7 @@ export default function LeaderboardPage() {
                         <Trophy className="h-3 w-3 text-amber-500 shrink-0" />
                         <span className="text-slate-500">Record week:</span>
                         <span className="text-amber-300 font-semibold tabular-nums">{fmt(b.record.amount)}</span>
-                        <span className="text-slate-600">· {new Date(b.record.weekOf + "T12:00:00").toLocaleDateString("en-US")}</span>
+                        <span className="text-slate-400">· {new Date(b.record.weekOf + "T12:00:00").toLocaleDateString("en-US")}</span>
                       </div>
                     )}
                   </div>
@@ -887,7 +888,7 @@ export default function LeaderboardPage() {
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          {rank && <span className="text-lg">{rank}</span>}
+                          {rank && <span className="text-2xl leading-none">{rank}</span>}
                           <span className="font-semibold text-base text-white">{b.broker}</span>
                         </div>
                         <div className="text-right">
