@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, MoonStar, TrendingUp } from "lucide-react";
+import { ArrowLeft, FileText, MoonStar, TrendingUp } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -166,7 +166,18 @@ export default function CustomerDetailPage() {
               </div>
             )}
           </div>
-          <RangePicker value={range} onChange={setRange} />
+          <div className="flex items-center gap-2">
+            {/* Carries the selected window through, so the report covers the
+                period the broker is already looking at. */}
+            <Link
+              href={`/broker/${encodeURIComponent(broker)}/customer/${encodeURIComponent(customer)}/report?${toQuery(range)}`}
+              className="flex items-center gap-1.5 text-sm text-slate-300 hover:text-white border border-white/10 hover:border-white/25 px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+            >
+              <FileText className="w-4 h-4" />
+              Client report
+            </Link>
+            <RangePicker value={range} onChange={setRange} />
+          </div>
         </div>
 
         {error ? (
