@@ -155,23 +155,23 @@ function AwardTile({
     <div className={`rounded-lg border p-3 ${holder ? "border-amber-500/25 bg-amber-500/[0.04]" : "border-white/[0.06] bg-white/[0.02]"}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold text-slate-300 truncate">
-            <span className="mr-1">{icon}</span>{label}
+          <p className="text-sm font-semibold text-white truncate">
+            <span className="mr-1.5">{icon}</span>{label}
           </p>
-          <p className="text-[10px] text-slate-600 truncate">{prize}</p>
+          <p className="text-xs text-slate-400 truncate">{prize}</p>
         </div>
-        <span className="text-[11px] font-bold text-amber-400/90 tabular-nums shrink-0">{fmt(value)}</span>
+        <span className="text-base font-bold text-amber-400 tabular-nums shrink-0">{fmt(value)}</span>
       </div>
-      <div className="mt-2 pt-2 border-t border-white/[0.05]">
+      <div className="mt-2.5 pt-2.5 border-t border-white/[0.05]">
         {holder ? (
           <>
-            <p className="text-xs font-semibold text-white truncate">{holder}</p>
-            {detail && <p className="text-[10px] text-slate-500 truncate">{detail}</p>}
+            <p className="text-sm font-semibold text-white truncate">{holder}</p>
+            {detail && <p className="text-xs text-slate-400 truncate">{detail}</p>}
           </>
         ) : (
           <>
-            <p className="text-xs text-slate-600">{pending ? "Not yet decided" : "Up for grabs"}</p>
-            {detail && <p className="text-[10px] text-slate-700 truncate">{detail}</p>}
+            <p className="text-sm text-slate-400">{pending ? "Not yet decided" : "Up for grabs"}</p>
+            {detail && <p className="text-xs text-slate-500 truncate">{detail}</p>}
           </>
         )}
       </div>
@@ -774,18 +774,18 @@ export default function LeaderboardPage() {
             <div className="px-5 py-4 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
                 <Flame className="w-5 h-5 text-amber-500" />
-                <h2 className="text-sm font-bold uppercase tracking-wider text-white">2026 Finish Strong Sales Championship</h2>
+                <h2 className="text-base font-bold uppercase tracking-wider text-white">2026 Finish Strong Sales Championship</h2>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-500 border border-white/[0.08] rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                <span className="text-xs text-slate-300 border border-white/[0.08] rounded-full px-3 py-1 uppercase tracking-wider">
                   {shortDate(contest.contestStart)} — {shortDate(contest.contestEnd)}, 2026
                 </span>
                 {contest.contestOver ? (
-                  <span className="text-[10px] text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 rounded-full px-3 py-1 uppercase tracking-wider">
                     Final standings
                   </span>
                 ) : (
-                  <span className="text-[10px] text-amber-300 border border-amber-500/40 bg-amber-500/10 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-amber-300 border border-amber-500/40 bg-amber-500/10 rounded-full px-3 py-1 uppercase tracking-wider">
                     {daysLeft(contest.contestEnd)} days left
                   </span>
                 )}
@@ -795,8 +795,8 @@ export default function LeaderboardPage() {
             {/* Championship prizes — the flyer's right column, with who currently holds each. */}
             <div className="px-4 pt-4">
               <div className="flex items-baseline justify-between mb-2">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Championship prizes</h3>
-                <span className="text-[10px] text-slate-600 uppercase tracking-wider">Prize pool over $5,000</span>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">Championship prizes</h3>
+                <span className="text-xs text-slate-400 uppercase tracking-wider">Prize pool over $5,000</span>
               </div>
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {podiumPrizes.map((prize, i) => {
@@ -858,17 +858,17 @@ export default function LeaderboardPage() {
                   pending={!contest.awards.midpointReached}
                 />
               </div>
-              <p className="mt-3 text-center text-[11px] font-semibold uppercase tracking-wider text-amber-400/70">
+              <p className="mt-5 text-center text-base sm:text-lg font-bold uppercase tracking-wide text-amber-400">
                 Open New Doors. Protect Margin. Finish the Year Strong.
               </p>
             </div>
 
             <div className="p-4">
-              <p className="text-xs text-slate-500 mb-1">
-                Ranked by gross margin from <span className="text-slate-300">brand new customers</span> — accounts that had never
+              <p className="text-sm text-slate-400 mb-1.5">
+                Ranked by gross margin from <span className="text-white font-medium">brand new customers</span> — accounts that had never
                 shipped with Oath before {shortDate(contest.contestStart)}.
               </p>
-              <p className="text-[11px] text-slate-600 mb-4">
+              <p className="text-xs text-slate-500 mb-4">
                 Clean files required · must exceed your individual sales goal to qualify · management determines final eligibility.
               </p>
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -887,14 +887,14 @@ export default function LeaderboardPage() {
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          {rank && <span className="text-base">{rank}</span>}
-                          <span className="font-semibold text-sm text-white">{b.broker}</span>
+                          {rank && <span className="text-lg">{rank}</span>}
+                          <span className="font-semibold text-base text-white">{b.broker}</span>
                         </div>
                         <div className="text-right">
-                          <span className={`text-sm font-bold tabular-nums ${b.totalGP > 0 ? "text-emerald-400" : "text-slate-600"}`}>
+                          <span className={`text-lg font-bold tabular-nums ${b.totalGP > 0 ? "text-emerald-400" : "text-slate-500"}`}>
                             {fmt(b.totalGP)}
                           </span>
-                          <p className="text-[10px] text-slate-600">
+                          <p className="text-xs text-slate-400">
                             {b.newCustomerCount} new · {b.totalLoads} loads
                           </p>
                         </div>
@@ -903,10 +903,10 @@ export default function LeaderboardPage() {
                         <>
                           <div className="space-y-1.5 mt-3 border-t border-white/[0.06] pt-2">
                             {(isExpanded ? b.customers : b.customers.slice(0, 3)).map((c) => (
-                              <div key={c.customer} className="flex items-start justify-between text-xs">
+                              <div key={c.customer} className="flex items-start justify-between text-sm">
                                 <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-slate-300 truncate">{c.customer}</p>
-                                  <p className="text-slate-600">
+                                  <p className="font-medium text-slate-200 truncate">{c.customer}</p>
+                                  <p className="text-xs text-slate-400">
                                     {c.loads} loads · first {shortDate(c.firstPickup)}
                                   </p>
                                 </div>
@@ -924,14 +924,14 @@ export default function LeaderboardPage() {
                                 else next.add(b.broker);
                                 return next;
                               })}
-                              className="text-[10px] text-slate-500 hover:text-slate-300 mt-2 transition-colors"
+                              className="text-xs text-slate-400 hover:text-white mt-2 transition-colors"
                             >
                               {isExpanded ? "Show less" : `+${b.customers.length - 3} more`}
                             </button>
                           )}
                         </>
                       ) : (
-                        <p className="text-xs text-slate-700 text-center py-3 mt-2 border-t border-white/[0.06]">
+                        <p className="text-sm text-slate-500 text-center py-3 mt-2 border-t border-white/[0.06]">
                           No new customers yet
                         </p>
                       )}
