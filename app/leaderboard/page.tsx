@@ -858,6 +858,9 @@ export default function LeaderboardPage() {
                   pending={!contest.awards.midpointReached}
                 />
               </div>
+              <p className="mt-3 text-center text-[11px] font-semibold uppercase tracking-wider text-amber-400/70">
+                Open New Doors. Protect Margin. Finish the Year Strong.
+              </p>
             </div>
 
             <div className="p-4">
