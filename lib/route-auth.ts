@@ -47,7 +47,7 @@ type BrokerAccessResult =
 
 /**
  * THE gate for every per-broker data route: a broker may read their own book
- * and nothing else; an admin (Jacob / Kevin — `ADMIN_EMAILS` in auth.ts) may
+ * and nothing else; an admin (Jacob / Kevin / Brett — `ADMIN_EMAILS`) may
  * read anyone's.
  *
  * Centralised on purpose. This rule is the whole promise made to the team about
