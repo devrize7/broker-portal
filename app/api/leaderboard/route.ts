@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { resolveActiveBroker, getActiveBrokerNames } from "@/lib/broker-mapping";
 import { getRoster, getWeeklyGoal, getRampStatus } from "@/lib/roster";
 import { trueMargin, trueRevenue } from "@/lib/margin";
+import { isRealLoad } from "@/lib/load-countability";
 import { parseLeaderboardPeriod, resolveLeaderboardPeriod } from "@/lib/leaderboard-periods";
 
 export const dynamic = "force-dynamic";
@@ -68,10 +69,10 @@ export async function GET(request: NextRequest) {
     if (period !== "weekly") {
       const range = resolveLeaderboardPeriod(period, { now });
       const loadsResult = await db.execute({
-        sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost FROM Load`,
+        sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost, carrier FROM Load`,
       });
       const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
-      interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null; status: string | null; lumperRevenue: number; lumperCost: number }
+      interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null; status: string | null; lumperRevenue: number; lumperCost: number; carrier: string | null }
       const allLoads: LoadRow[] = loadsResult.rows.map((row) => ({
         salesRep: row[0] as string | null,
         revenue: Number(row[1]) || 0,
@@ -81,11 +82,12 @@ export async function GET(request: NextRequest) {
         status: row[5] as string | null,
         lumperRevenue: Number(row[6]) || 0,
         lumperCost: Number(row[7]) || 0,
+        carrier: row[8] as string | null,
       }));
       const currentByBroker: Record<string, { loads: number; revenue: number; margin: number }> = {};
 
       for (const load of allLoads) {
-        if (load.revenue === 0 && load.carrierCost === 0) continue;
+        if (!isRealLoad(load)) continue;
         if (!load.profWeek && EXCLUDED_STATUSES.includes((load.status || "").toLowerCase())) continue;
         const periodKey = load.profWeek || getMondayOf(new Date(load.pickupDate)).toISOString().slice(0, 10);
         if (periodKey < range.from || periodKey >= range.toExclusive) continue;
@@ -163,7 +165,7 @@ export async function GET(request: NextRequest) {
     }
 
     const loadsResult = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost FROM Load WHERE pickupDate >= ? OR profWeek >= ?`,
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost, carrier FROM Load WHERE pickupDate >= ? OR profWeek >= ?`,
       args: [fourWeeksBeforeTarget.toISOString(), fourWeeksBeforeTarget.toISOString().slice(0, 10)],
     });
 
@@ -171,7 +173,7 @@ export async function GET(request: NextRequest) {
 
     // Parse all loads
     const EXCLUDED_STATUSES = ["booked", "committed", "cancelled", "quote", "sent", "ready"];
-    interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null; status: string | null; lumperRevenue: number; lumperCost: number }
+    interface LoadRow { salesRep: string | null; revenue: number; carrierCost: number; pickupDate: string; profWeek: string | null; status: string | null; lumperRevenue: number; lumperCost: number; carrier: string | null }
     const allLoads: LoadRow[] = loadsResult.rows.map((row) => ({
       salesRep: row[0] as string | null,
       revenue: Number(row[1]) || 0,
@@ -181,10 +183,14 @@ export async function GET(request: NextRequest) {
       status: row[5] as string | null,
       lumperRevenue: Number(row[6]) || 0,
       lumperCost: Number(row[7]) || 0,
+      carrier: row[8] as string | null,
     }));
 
     // Target week loads: use profWeek as source of truth
-    const profWeekLoads = allLoads.filter((l) => l.profWeek === targetMondayKey);
+    // The CSV pre-filtered on STATUS, not on whether a carrier was ever booked,
+    // so a tagged load still needs the financial check (matches the command
+    // center's belongsToRange, which applies it before the profWeek branch).
+    const profWeekLoads = allLoads.filter((l) => l.profWeek === targetMondayKey && isRealLoad(l));
     const targetSunday = new Date(targetMonday);
     targetSunday.setDate(targetSunday.getDate() + 6);
     targetSunday.setHours(23, 59, 59, 999);
@@ -193,7 +199,7 @@ export async function GET(request: NextRequest) {
       ? profWeekLoads
       : allLoads.filter((l) => {
           if (l.profWeek) return false; // skip loads tagged for other weeks
-          if (l.revenue === 0 && l.carrierCost === 0) return false; // skip phantom $0/$0 loads
+          if (!isRealLoad(l)) return false; // no real financials (see isRealLoad)
           if (EXCLUDED_STATUSES.includes((l.status || "").toLowerCase())) return false; // dispatched+ only
           const pd = new Date(l.pickupDate);
           return pd >= targetMonday && pd <= targetSunday;
@@ -206,8 +212,8 @@ export async function GET(request: NextRequest) {
     }
 
     const priorWeeksLoads = allLoads.filter((l) => {
-      // Always exclude $0/$0 phantom loads
-      if (l.revenue === 0 && l.carrierCost === 0) return false;
+      // Always exclude loads with no real financials (see isRealLoad)
+      if (!isRealLoad(l)) return false;
       if (l.profWeek && l.profWeek < targetMondayKey && l.profWeek >= fourWeeksBeforeTarget.toISOString().slice(0, 10)) return true;
       if (!l.profWeek) {
         // No profWeek — apply status filter (profWeek loads already passed Tai's status filter)
@@ -249,7 +255,7 @@ export async function GET(request: NextRequest) {
     // Matches the command-center scorecard. The windowed fetch above is only 4
     // weeks, so this is a separate all-loads query; the in-progress week is excluded.
     const recRes = await db.execute({
-      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost FROM Load`,
+      sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost, carrier FROM Load`,
     });
     const recProfWeeks = new Set<string>();
     for (const r of recRes.rows) { const pw = r[4] as string | null; if (pw) recProfWeeks.add(pw); }
@@ -259,7 +265,7 @@ export async function GET(request: NextRequest) {
       if (!isActive) continue;
       const revenue = Number(r[1]) || 0;
       const carrierCost = Number(r[2]) || 0;
-      if (revenue === 0 && carrierCost === 0) continue; // phantom $0/$0
+      if (!isRealLoad({ revenue, carrierCost, carrier: r[8] as string | null })) continue;
       const profWeek = r[4] as string | null;
       let wk: string;
       if (profWeek) wk = profWeek;
