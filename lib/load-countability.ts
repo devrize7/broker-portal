@@ -25,10 +25,25 @@ export interface RealLoadLike {
 
 /**
  * True when a load carries real financials and should count toward a margin
- * figure. THREE rules, all about margin that isn't real:
+ * figure. THREE rules — and only ONE is about inflation. A load is a RESULT
+ * only when both sides of it were actually booked; an incomplete record is
+ * not a $0 result, it is a not-yet-known one, and it must not be averaged
+ * into a broker's week in either direction.
  *
- * 1. PHANTOM ($0 revenue AND $0 cost) — a webhook status update that arrived
- *    with no financial data. The long-standing rule.
+ * 1. NO REVENUE ($0 sell) — the customer was never billed, so whatever we
+ *    paid the carrier books as a pure LOSS. Subsumes the old phantom
+ *    ($0 revenue AND $0 cost) rule, which was this same condition seen only
+ *    in its most obvious case. Verified in TAI: these carry `totalSell: 0`
+ *    AND a real invoice for $0.00 with zero line items, which TAI auto-marks
+ *    "Fully Paid" because $0 is trivially paid. Loads 130775435 (DiMare
+ *    Fresh, −$6,800) and 130592612 (Advanced Commodities, −$2,750) dragged
+ *    Raphael Jackson's week of Aug 3–9 to −$8,800 when his one complete load
+ *    that week made +$750. Book-wide: 38 loads, $19,381.75 of fake loss, all
+ *    38 individually verified against TAI.
+ *
+ *    A REAL loss still counts in full — this tests revenue EXACTLY $0
+ *    (nothing billed at all), never "cost exceeded revenue". A load billed
+ *    $3,000 against a $3,500 cost still shows its true −$500.
  *
  * 2. NEGATIVE COST — a buy side below $0 is a bad entry, and it inflates
  *    margin harder than a missing one (revenue − (−100) = revenue + 100).
@@ -50,14 +65,20 @@ export interface RealLoadLike {
  * linehaul". Over-excluding real margin is the harder error to notice, so the
  * test is deliberately narrower than a blanket `carrierCost > 0`.
  *
- * Self-healing: the moment the buy side is keyed into TAI, the load re-enters
- * the leaderboard on the next request. Nothing is persisted or backfilled.
+ * Rules 1 and 3 are MIRROR IMAGES: one side of the load was never keyed into
+ * TAI. Rule 1 manufactures a loss, rule 3 manufactures a profit. Neither is a
+ * result, and both are invisible to the status filter because the loads are
+ * `delivered`.
+ *
+ * Self-healing: the moment the missing side is keyed into TAI, the load
+ * re-enters the leaderboard on the next request. Nothing is persisted or
+ * backfilled.
  *
  * Lumper pass-through is a DIFFERENT inflation with its own fix — see
  * `trueMargin` in lib/margin.ts. Both apply.
  */
 export function isRealLoad(load: RealLoadLike): boolean {
-  if (load.revenue === 0 && load.carrierCost === 0) return false;
+  if (load.revenue <= 0) return false;
   if (load.carrierCost < 0) return false;
   if (load.carrierCost === 0 && !load.carrier?.trim()) return false;
   return true;
