@@ -20,6 +20,19 @@ describe("isRealLoad", () => {
     expect(isRealLoad(load())).toBe(true);
   });
 
+  it("drops a $0-REVENUE load with a booked carrier cost (fake LOSS, the mirror image)", () => {
+    // 130775435 DiMare Fresh: TAI totalSell 0, totalBuy 6800, invoice exists
+    // for $0.00 with zero line items. With 130592612 it dragged Raphael
+    // Jackson's week of Aug 3-9 to -$8,800; his one complete load made +$750.
+    expect(isRealLoad(load({ revenue: 0, carrierCost: 6800, carrier: "CHAWLA TRANSPORT INC" }))).toBe(false);
+    expect(isRealLoad(load({ revenue: 0, carrierCost: 2750, carrier: "KEN-TRAN TRUCKING INC" }))).toBe(false);
+  });
+
+  it("KEEPS a genuine loss — the test is revenue EXACTLY $0, not cost > revenue", () => {
+    expect(isRealLoad(load({ revenue: 3000, carrierCost: 3500 }))).toBe(true);
+    expect(isRealLoad(load({ revenue: 1, carrierCost: 99999 }))).toBe(true);
+  });
+
   it("drops the $0/$0 phantom (webhook status update, no financials)", () => {
     expect(isRealLoad(load({ revenue: 0, carrierCost: 0, carrier: null }))).toBe(false);
     expect(isRealLoad(load({ revenue: 0, carrierCost: 0 }))).toBe(false);
