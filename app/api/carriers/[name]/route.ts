@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/route-auth";
 import { db } from "@/lib/db";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
 import { getRoster } from "@/lib/roster";
+import { isRealLoad } from "@/lib/load-countability";
 import { trueMargin } from "@/lib/margin";
 
 export const dynamic = "force-dynamic";
@@ -93,7 +94,11 @@ export async function GET(
     for (const row of result.rows) {
       const revenue = Number(row[1]) || 0;
       const carrierCost = Number(row[2]) || 0;
-      if (revenue === 0 && carrierCost === 0) continue;
+      // Same countability rule as the leaderboard. Rule 3 (no carrier booked)
+      // cannot fire here — the query already filters to a named carrier — but a
+      // load never billed, or carrying a negative cost, still books fake margin
+      // against this carrier's page.
+      if (!isRealLoad({ revenue, carrierCost, carrier: (row[6] as string | null) ?? null })) continue;
 
       const margin = trueMargin(revenue, carrierCost, Number(row[9]) || 0, Number(row[10]) || 0);
       const pickupDate = row[3] as string;

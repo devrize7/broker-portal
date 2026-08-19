@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import type { Roster } from "@/lib/roster";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
 import { startOfWeek } from "@/lib/date-ranges";
+import { isRealLoad } from "@/lib/load-countability";
 import type { ArLoadRow } from "@/lib/customer-ar";
 
 /**
@@ -79,7 +80,24 @@ export function etYmd(iso: string): string {
  * which weeks the profitability CSV covered ACROSS the whole company, not just
  * within one broker's or one date range's slice.
  */
-export async function fetchCountableLoads(): Promise<CountableLoad[]> {
+export interface FetchLoadsOptions {
+  /**
+   * Keep loads whose financials are incomplete — no revenue booked, or no
+   * carrier booked against a $0 cost.
+   *
+   * Defaults to FALSE, so every margin-bearing surface in the portal gets the
+   * same countability rule as the leaderboard. Pass true ONLY from a surface
+   * that shows NO margin and needs the shipping record to be complete: the
+   * customer client report is the one such caller. That customer shipped the
+   * load and paid for it; dropping it because Oath has not finished keying its
+   * own side would hand them a report that is short against their own records.
+   */
+  includeIncompleteFinancials?: boolean;
+}
+
+export async function fetchCountableLoads(
+  options: FetchLoadsOptions = {}
+): Promise<CountableLoad[]> {
   const placeholders = EXCLUDED_STATUSES.map(() => "?").join(",");
   const result = await db.execute({
     sql: `SELECT loadNumber, customer, salesRep, pickupDate, origin, destination,
@@ -96,7 +114,8 @@ export async function fetchCountableLoads(): Promise<CountableLoad[]> {
     pickupYmd: etYmd(String(r.pickupDate)),
     origin: String(r.origin ?? ""),
     destination: String(r.destination ?? ""),
-    carrier: (r.carrier as string | null) || "Unknown",
+    // Kept unmapped for the countability check below; defaulted at push time.
+    rawCarrier: (r.carrier as string | null) ?? null,
     status: String(r.status ?? ""),
     revenue: Number(r.revenue) || 0,
     carrierCost: Number(r.carrierCost) || 0,
@@ -114,7 +133,18 @@ export async function fetchCountableLoads(): Promise<CountableLoad[]> {
 
   const loads: CountableLoad[] = [];
   for (const row of raw) {
-    // Phantom $0/$0 loads carry no signal in either direction.
+    // The same countability rule the leaderboard applies (lib/load-countability.ts),
+    // now enforced at the shared fetch so the broker pages, house accounts and
+    // the sales contest cannot quote a margin the leaderboard already rejected.
+    // Subsumes the old phantom $0/$0 rule, which was rule 1 seen in its most
+    // obvious case.
+    if (
+      !options.includeIncompleteFinancials &&
+      !isRealLoad({ revenue: row.revenue, carrierCost: row.carrierCost, carrier: row.rawCarrier })
+    ) {
+      continue;
+    }
+    // Even a caller that opts in gains nothing from a $0/$0 record.
     if (row.revenue === 0 && row.carrierCost === 0) continue;
 
     let weekKey: string;
@@ -125,8 +155,8 @@ export async function fetchCountableLoads(): Promise<CountableLoad[]> {
       if (csvWeeks.has(weekKey)) continue;
     }
 
-    const { profWeek: _drop, ...rest } = row;
-    loads.push({ ...rest, weekKey });
+    const { profWeek: _drop, rawCarrier, ...rest } = row;
+    loads.push({ ...rest, carrier: rawCarrier || "Unknown", weekKey });
   }
 
   return loads;

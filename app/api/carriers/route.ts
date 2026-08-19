@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/route-auth";
 import { db } from "@/lib/db";
 import { cityToCoords } from "@/lib/city-coords";
+import { isRealLoad } from "@/lib/load-countability";
 import { resolveActiveBroker } from "@/lib/broker-mapping";
 import { getRoster } from "@/lib/roster";
 import { trueMargin } from "@/lib/margin";
@@ -32,13 +33,17 @@ export async function GET(req: NextRequest) {
     const lanes = result.rows.map((r) => {
       const origin = r[1] as string;
       const destination = r[2] as string;
-      const carrier = (r[3] as string) || "Unknown";
+      const rawCarrier = (r[3] as string | null) ?? null;
+      const carrier = rawCarrier || "Unknown";
       const salesRep = r[4] as string | null;
       const revenue = r[5] as number;
       const carrierCost = r[6] as number;
 
-      // Skip $0/$0 phantom loads
-      if (revenue === 0 && carrierCost === 0) return null;
+      // Same countability rule as the leaderboard — a load missing its sell or
+      // buy side is not a $0 result, it is a not-yet-known one, and it would
+      // otherwise book fake margin against this carrier. Tested on the RAW
+      // carrier: the "Unknown" default above is truthy and would defeat rule 3.
+      if (!isRealLoad({ revenue, carrierCost, carrier: rawCarrier })) return null;
 
       // Resolve broker mapping
       const { broker, isActive } = resolveActiveBroker(roster, salesRep);
