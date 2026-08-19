@@ -1,12 +1,7 @@
 import NextAuth from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { getRoster } from "@/lib/roster";
-
-const ADMIN_EMAILS = new Set([
-  "jacob@gowithoath.com",
-  "kevin.mccaig@gowithoath.com",
-  "brett@gowithoath.com",
-]);
+import { isPortalAdminEmail } from "@/lib/admin-access";
 
 /**
  * Resolve a broker name from a login email via the roster feed (lowercased
@@ -33,14 +28,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ profile }) {
       const email = (profile?.email ?? "").toLowerCase();
       if (!email) return false;
-      if (ADMIN_EMAILS.has(email)) return true;
+      if (isPortalAdminEmail(email)) return true;
       return (await brokerForEmail(email)) !== null;
     },
     async jwt({ token, profile }) {
       if (profile?.email) {
         const email = profile.email.toLowerCase();
         token.brokerName = await brokerForEmail(email);
-        token.isAdmin = ADMIN_EMAILS.has(email);
+        token.isAdmin = isPortalAdminEmail(email);
       }
       return token;
     },
