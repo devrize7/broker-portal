@@ -13,7 +13,7 @@ interface ControlState {
     lastTriggeredBy: string | null;
     lastResult: unknown;
   };
-  delivery: { cc: string[]; recipientRule: string };
+  delivery: { summaryTo: string[]; recipientRule: string };
   preview: { synthetic: true; broker: string; weekRangeLabel: string; html: string };
 }
 
@@ -107,7 +107,7 @@ export function ScorecardControls() {
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           <InfoCard icon={<CalendarClock className="h-5 w-5 text-blue-400" />} label="Schedule" value="Monday · 12:00 PM Eastern" />
-          <InfoCard icon={<Mail className="h-5 w-5 text-violet-400" />} label="Copied on every email" value={data.delivery.cc.join(", ")} />
+          <InfoCard icon={<Mail className="h-5 w-5 text-violet-400" />} label="Weekly roster summary to" value={data.delivery.summaryTo.join(", ")} />
           <InfoCard
             icon={<RefreshCw className="h-5 w-5 text-emerald-400" />}
             label="Last run"
