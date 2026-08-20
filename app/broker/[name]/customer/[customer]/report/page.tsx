@@ -7,7 +7,7 @@ import { ArrowLeft, Download } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DEFAULT_PRESET, isValidYmd, parsePreset } from "@/lib/date-ranges";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import type { CustomerReport, WeeklyPoint } from "@/lib/customer-report";
+import type { CustomerReport, VolumeBucket, VolumePoint } from "@/lib/customer-report";
 
 interface ReportResponse extends CustomerReport {
   customer: string;
@@ -38,20 +38,36 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 /** Custom tooltip — matches the drill-down's pattern and avoids Recharts' formatter typing. */
-function WeekTooltip({
+const BUCKET_LABEL: Record<VolumeBucket, string> = {
+  weekly: "Weekly",
+  biweekly: "Biweekly",
+  monthly: "Monthly",
+};
+
+/** How a bucket's start date reads on the axis and in the tooltip. */
+function bucketPointLabel(start: string, bucket: VolumeBucket): string {
+  if (bucket === "monthly") {
+    return new Date(start + "T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  }
+  return `${bucket === "biweekly" ? "Two weeks from" : "Week of"} ${fmtDate(start)}`;
+}
+
+function VolumeTooltip({
   active,
   payload,
+  bucket,
 }: {
   active?: boolean;
-  payload?: Array<{ payload: WeeklyPoint }>;
+  payload?: Array<{ payload: VolumePoint }>;
+  bucket: VolumeBucket;
 }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
     <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 10px", fontSize: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-      <p style={{ color: "#64748b", marginBottom: 2 }}>Week of {fmtDate(d.weekStart)}</p>
-      <p style={{ fontWeight: 700, color: "#0f172a" }}>{fmtMoney(d.revenue)}</p>
-      <p style={{ color: "#64748b" }}>{d.loads} {d.loads === 1 ? "load" : "loads"}</p>
+      <p style={{ color: "#64748b", marginBottom: 2 }}>{bucketPointLabel(d.start, bucket)}</p>
+      <p style={{ fontWeight: 700, color: "#0f172a" }}>{d.loads} {d.loads === 1 ? "load" : "loads"}</p>
+      <p style={{ color: "#64748b" }}>{fmtMoney(d.revenue)}</p>
     </div>
   );
 }
@@ -122,7 +138,7 @@ export default function CustomerReportPage() {
     );
   }
 
-  const { stats, network, weekly, topLanes } = data;
+  const { stats, network, volume, topLanes } = data;
   const onTimeLabel = stats.onTime.onTimePct === null ? "—" : `${stats.onTime.onTimePct.toFixed(1)}%`;
 
   return (
@@ -233,32 +249,43 @@ export default function CustomerReportPage() {
           </div>
         </Section>
 
-        {/* ── Weekly volume ── */}
-        {weekly.length > 1 && (
-          <Section title="Weekly Volume">
+        {/* ── Volume trend ──
+            Bars are LOAD COUNT: the question this answers for the customer is
+            whether their freight with us is growing. The bucket adapts to the
+            selected range (see pickVolumeBucket) so a year-to-date report is
+            not 34 weekly bars, and a one-month report is not a single one. */}
+        {volume.points.length > 1 && (
+          <Section title={`${BUCKET_LABEL[volume.bucket]} Volume`}>
             <div style={{ height: 220, width: "100%" }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={weekly} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+                <BarChart data={volume.points} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                   <XAxis
-                    dataKey="weekStart"
-                    tickFormatter={(v: string) => fmtDate(v, false)}
+                    dataKey="start"
+                    tickFormatter={(v: string) =>
+                      volume.bucket === "monthly"
+                        ? new Date(v + "T12:00:00").toLocaleDateString("en-US", { month: "short" })
+                        : fmtDate(v, false)
+                    }
                     tick={{ fontSize: 11, fill: "#64748b" }}
                     axisLine={{ stroke: "#cbd5e1" }}
                     tickLine={false}
                   />
                   <YAxis
-                    tickFormatter={(v: number) => `$${Math.round(v / 1000)}k`}
+                    allowDecimals={false}
                     tick={{ fontSize: 11, fill: "#64748b" }}
                     axisLine={false}
                     tickLine={false}
-                    width={48}
+                    width={36}
                   />
-                  <Tooltip content={<WeekTooltip />} cursor={{ fill: "rgba(15,23,42,0.04)" }} />
-                  <Bar dataKey="revenue" fill="#0f172a" radius={[3, 3, 0, 0]} />
+                  <Tooltip content={<VolumeTooltip bucket={volume.bucket} />} cursor={{ fill: "rgba(15,23,42,0.04)" }} />
+                  <Bar dataKey="loads" fill="#0f172a" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <p style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>
+              Loads per {volume.bucket === "monthly" ? "month" : volume.bucket === "biweekly" ? "two weeks" : "week"}.
+            </p>
           </Section>
         )}
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCustomerReport, type ReportLoad } from "@/lib/customer-report";
+import { buildCustomerReport, type ReportLoad, buildVolumeTrend, pickVolumeBucket } from "@/lib/customer-report";
 
 function load(over: Partial<ReportLoad> = {}): ReportLoad {
   return {
@@ -36,7 +36,7 @@ describe("buildCustomerReport", () => {
     expect(r.stats.avgRevPerLoad).toBe(0);
     expect(r.stats.claimsPct).toBeNull();
     expect(r.firstLoadDate).toBeNull();
-    expect(r.weekly).toEqual([]);
+    expect(r.volume.points).toEqual([]);
     expect(r.topLanes).toEqual([]);
   });
 
@@ -67,7 +67,7 @@ describe("buildCustomerReport", () => {
     expect(r.stats.acceptancePct).toBe(25); // 1 of 4 tendered survived
   });
 
-  it("buckets weekly revenue by the Monday of the pickup week", () => {
+  it("buckets weekly volume by the Monday of the pickup week on a short range", () => {
     const r = buildCustomerReport(
       [
         load({ loadNumber: "1", pickupYmd: "2026-08-03", revenue: 500 }), // Mon
@@ -77,9 +77,10 @@ describe("buildCustomerReport", () => {
       0,
       0
     );
-    expect(r.weekly).toEqual([
-      { weekStart: "2026-08-03", revenue: 1200, loads: 2 },
-      { weekStart: "2026-08-10", revenue: 900, loads: 1 },
+    expect(r.volume.bucket).toBe("weekly");
+    expect(r.volume.points).toEqual([
+      { start: "2026-08-03", revenue: 1200, loads: 2 },
+      { start: "2026-08-10", revenue: 900, loads: 1 },
     ]);
   });
 
@@ -177,5 +178,61 @@ describe("buildCustomerReport", () => {
     expect(serialized).not.toContain("carriercost");
     expect(serialized).not.toContain("commission");
     expect(serialized).not.toContain("profit");
+  });
+});
+
+describe("volume trend bucketing", () => {
+  it("picks a bucket that keeps the bar count legible at any range", () => {
+    // A fixed bucket is wrong at one end or the other: monthly makes "this
+    // month" a single bar, weekly made a year-to-date report 34 of them.
+    expect(pickVolumeBucket(1)).toBe("weekly");
+    expect(pickVolumeBucket(12)).toBe("weekly");
+    expect(pickVolumeBucket(13)).toBe("biweekly");
+    expect(pickVolumeBucket(32)).toBe("biweekly");
+    expect(pickVolumeBucket(33)).toBe("monthly");
+    expect(pickVolumeBucket(140)).toBe("monthly");
+  });
+
+  it("rolls a long relationship up to calendar months", () => {
+    const loads = [
+      load({ loadNumber: "1", pickupYmd: "2026-01-06" }),
+      load({ loadNumber: "2", pickupYmd: "2026-01-27" }),
+      load({ loadNumber: "3", pickupYmd: "2026-03-10" }),
+      load({ loadNumber: "4", pickupYmd: "2026-08-18" }),
+    ];
+    const v = buildVolumeTrend(loads);
+    expect(v.bucket).toBe("monthly");
+    expect(v.points.map((p) => p.start)).toEqual(["2026-01-01", "2026-03-01", "2026-08-01"]);
+    expect(v.points[0].loads).toBe(2);
+  });
+
+  it("pairs biweekly buckets forward from the first week in range", () => {
+    // Anchored to the first week so the boundaries do not shift when the
+    // selected range shifts — otherwise the same load lands in a different bar
+    // depending on which window you opened.
+    const loads = [
+      load({ loadNumber: "1", pickupYmd: "2026-01-05" }), // anchor week
+      load({ loadNumber: "2", pickupYmd: "2026-01-13" }), // week 1 -> same pair
+      load({ loadNumber: "3", pickupYmd: "2026-01-19" }), // week 2 -> next pair
+      load({ loadNumber: "4", pickupYmd: "2026-05-04" }),
+    ];
+    const v = buildVolumeTrend(loads);
+    expect(v.bucket).toBe("biweekly");
+    expect(v.points[0].start).toBe("2026-01-05");
+    expect(v.points[0].loads).toBe(2);
+    expect(v.points[1].start).toBe("2026-01-19");
+  });
+
+  it("counts loads as the series, carrying revenue for the tooltip", () => {
+    const v = buildVolumeTrend([
+      load({ loadNumber: "1", pickupYmd: "2026-08-03", revenue: 1000 }),
+      load({ loadNumber: "2", pickupYmd: "2026-08-04", revenue: 1500 }),
+    ]);
+    expect(v.points[0].loads).toBe(2);
+    expect(v.points[0].revenue).toBe(2500);
+  });
+
+  it("is empty-safe", () => {
+    expect(buildVolumeTrend([])).toEqual({ bucket: "weekly", points: [] });
   });
 });
