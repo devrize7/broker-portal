@@ -125,7 +125,21 @@ export async function GET(req: NextRequest) {
   });
 
   try {
-    const [roster, allLoads] = await Promise.all([getRoster(), fetchCountableLoads()]);
+    // includeIncompleteFinancials: this is the ONE surface that opts back in.
+    //
+    // Every margin-bearing page drops loads whose sell or buy side was never
+    // keyed into TAI (lib/load-countability.ts) — they are not a $0 result, and
+    // they would book fake margin. This report shows NO margin. It is the
+    // customer's shipping record, and that customer shipped the load and paid
+    // the invoice. Dropping it because Oath has not finished its own data entry
+    // would hand them a report that is short against their own records — the
+    // precise failure the broker-scope disclosure in the footer exists to
+    // prevent. Book-wide this is 54 loads that would otherwise silently vanish
+    // from customers' reports.
+    const [roster, allLoads] = await Promise.all([
+      getRoster(),
+      fetchCountableLoads({ includeIncompleteFinancials: true }),
+    ]);
 
     const mine = loadsForBroker(allLoads, roster, broker).filter(
       (l) =>
