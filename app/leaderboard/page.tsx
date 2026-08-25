@@ -225,12 +225,31 @@ export default function LeaderboardPage() {
     }
   }, [period, weekOffset]);
 
-  useEffect(() => {
-    fetch("/api/sales-contest", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d?.brokers)) setContest(d as ContestData); })
-      .catch(() => {});
+  const loadContest = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sales-contest", { cache: "no-store" });
+      const d = await res.json();
+      if (Array.isArray(d?.brokers)) setContest(d as ContestData);
+    } catch {
+      // Keep the last good standings on a blip rather than blanking the card.
+      // The contest has no error surface of its own; a failed poll should be
+      // invisible, not destructive.
+    }
   }, []);
+
+  /**
+   * The contest card polls on the same 60s cadence as the leaderboard, but
+   * unconditionally — the Aug 3 – Dec 18 window is fixed and has nothing to do
+   * with the period/week selector above. Gating this the way `load` is gated
+   * would freeze the standings for anyone browsing a monthly view or a past
+   * week, which is the bug this replaces: the card used to fetch once on mount,
+   * so a page left open showed a live leaderboard above frozen contest numbers.
+   */
+  useEffect(() => {
+    loadContest();
+    const refresh = setInterval(loadContest, 60_000);
+    return () => clearInterval(refresh);
+  }, [loadContest]);
 
   useEffect(() => {
     load();
