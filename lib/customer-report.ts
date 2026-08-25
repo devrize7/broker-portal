@@ -72,11 +72,18 @@ export interface ReportNetwork {
   avgTransitDays: number | null;
 }
 
-export interface WeeklyPoint {
-  /** Monday of the week, `YYYY-MM-DD`. */
-  weekStart: string;
+export type VolumeBucket = "weekly" | "biweekly" | "monthly";
+
+export interface VolumePoint {
+  /** First day of the bucket, `YYYY-MM-DD`. */
+  start: string;
   revenue: number;
   loads: number;
+}
+
+export interface VolumeTrend {
+  bucket: VolumeBucket;
+  points: VolumePoint[];
 }
 
 export interface LaneRow {
@@ -88,7 +95,7 @@ export interface LaneRow {
 export interface CustomerReport {
   stats: ReportStats;
   network: ReportNetwork;
-  weekly: WeeklyPoint[];
+  volume: VolumeTrend;
   topLanes: LaneRow[];
   /** ET date of the first load in range — "partner since". */
   firstLoadDate: string | null;
@@ -107,6 +114,78 @@ function stateOf(location: string): string | null {
 }
 
 const HOW_MANY_LANES = 8;
+
+/** Whole weeks spanned by two ET dates, inclusive of both ends. */
+function weeksSpanned(fromYmd: string, toYmd: string): number {
+  const from = new Date(startOfWeek(fromYmd) + "T12:00:00Z").getTime();
+  const to = new Date(startOfWeek(toYmd) + "T12:00:00Z").getTime();
+  return Math.round((to - from) / (7 * 86_400_000)) + 1;
+}
+
+/**
+ * Pick the bucket so the chart stays readable at any range a broker selects.
+ *
+ * The range is theirs to choose — this week through all time — so a FIXED
+ * bucket is wrong at one end or the other. Monthly turns "this month" into a
+ * single bar; weekly turned a year-to-date report into 34 of them, which on a
+ * printed page is a picket fence rather than a trend.
+ *
+ * Thresholds are chosen to keep the bar count roughly in the 6–16 band, which
+ * is where a trend is legible without a magnifier.
+ */
+export function pickVolumeBucket(weeks: number): VolumeBucket {
+  if (weeks <= 12) return "weekly";
+  if (weeks <= 32) return "biweekly";
+  return "monthly";
+}
+
+/** First day of the bucket `pickupYmd` falls in, given the bucket and the anchor week. */
+function bucketStart(pickupYmd: string, bucket: VolumeBucket, anchorWeek: string): string {
+  if (bucket === "monthly") return pickupYmd.slice(0, 7) + "-01";
+  const week = startOfWeek(pickupYmd);
+  if (bucket === "weekly") return week;
+  // Biweekly pairs are counted FORWARD from the first week in range, so the
+  // bucket boundaries do not shift when the range does.
+  const weeksIn = Math.round(
+    (new Date(week + "T12:00:00Z").getTime() - new Date(anchorWeek + "T12:00:00Z").getTime()) /
+      (7 * 86_400_000)
+  );
+  const pairIndex = Math.floor(weeksIn / 2) * 2;
+  const start = new Date(anchorWeek + "T12:00:00Z");
+  start.setUTCDate(start.getUTCDate() + pairIndex * 7);
+  return start.toISOString().slice(0, 10);
+}
+
+/**
+ * Load volume over time, bucketed to stay readable.
+ *
+ * Counts LOADS as the primary series — the question the customer is answering
+ * is "is our freight with them growing", which is a volume question. Revenue
+ * rides along on each point so the tooltip can show both without a second pass.
+ */
+export function buildVolumeTrend(loads: ReportLoad[]): VolumeTrend {
+  if (loads.length === 0) return { bucket: "weekly", points: [] };
+
+  const dates = loads.map((l) => l.pickupYmd).sort();
+  const bucket = pickVolumeBucket(weeksSpanned(dates[0], dates[dates.length - 1]));
+  const anchorWeek = startOfWeek(dates[0]);
+
+  const byBucket = new Map<string, VolumePoint>();
+  for (const l of loads) {
+    const start = bucketStart(l.pickupYmd, bucket, anchorWeek);
+    const entry = byBucket.get(start) ?? { start, revenue: 0, loads: 0 };
+    entry.revenue += l.revenue;
+    entry.loads++;
+    byBucket.set(start, entry);
+  }
+
+  return {
+    bucket,
+    points: Array.from(byBucket.values())
+      .map((p) => ({ ...p, revenue: round2(p.revenue) }))
+      .sort((a, b) => a.start.localeCompare(b.start)),
+  };
+}
 
 /**
  * Build the report.
@@ -127,18 +206,7 @@ export function buildCustomerReport(
   const totalRevenue = round2(loads.reduce((s, l) => s + l.revenue, 0));
   const delivered = loads.filter((l) => l.status.toLowerCase() === "delivered");
 
-  // ── Weekly revenue ──
-  const weeklyMap = new Map<string, WeeklyPoint>();
-  for (const l of loads) {
-    const weekStart = startOfWeek(l.pickupYmd);
-    const entry = weeklyMap.get(weekStart) ?? { weekStart, revenue: 0, loads: 0 };
-    entry.revenue += l.revenue;
-    entry.loads++;
-    weeklyMap.set(weekStart, entry);
-  }
-  const weekly = Array.from(weeklyMap.values())
-    .map((w) => ({ ...w, revenue: round2(w.revenue) }))
-    .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+  const volume = buildVolumeTrend(loads);
 
   // ── Top lanes, ranked by volume ──
   const laneMap = new Map<string, LaneRow>();
@@ -213,7 +281,7 @@ export function buildCustomerReport(
           ? round2(transitDays.reduce((s, d) => s + d, 0) / transitDays.length)
           : null,
     },
-    weekly,
+    volume,
     topLanes,
     firstLoadDate: sorted.length > 0 ? sorted[0].pickupYmd : null,
     lastLoadDate: sorted.length > 0 ? sorted[sorted.length - 1].pickupYmd : null,
