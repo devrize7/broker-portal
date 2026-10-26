@@ -6,51 +6,25 @@ import { getRoster, getWeeklyGoal, getRampStatus } from "@/lib/roster";
 import { trueMargin, trueRevenue } from "@/lib/margin";
 import { isRealLoad } from "@/lib/load-countability";
 import { parseLeaderboardPeriod, resolveLeaderboardPeriod } from "@/lib/leaderboard-periods";
+import { addDays } from "@/lib/date-ranges";
+import {
+  mondayKeyForInstant,
+  pickupInRange,
+  utcMidnight,
+  weekKeyOfPickup,
+  weekPaceFactor,
+} from "@/lib/leaderboard-week";
 
 export const dynamic = "force-dynamic";
 
-function getMondayOf(date: Date): Date {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short',
-  }).formatToParts(date);
-  const year = parseInt(parts.find(p => p.type === 'year')!.value);
-  const month = parseInt(parts.find(p => p.type === 'month')!.value) - 1;
-  const day = parseInt(parts.find(p => p.type === 'day')!.value);
-  const weekdayStr = parts.find(p => p.type === 'weekday')!.value;
-  const dayOfWeek = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(weekdayStr);
-  const d = new Date(year, month, day);
-  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 /** Calendar date (YYYY-MM-DD) of the Sunday ending the week starting on `mondayKey`. */
 function weekEndKey(mondayKey: string): string {
-  const d = new Date(mondayKey + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + 6);
-  return d.toISOString().slice(0, 10);
+  return addDays(mondayKey, 6);
 }
 
 // Weekly goal now comes from the roster feed (getWeeklyGoal in lib/roster.ts) —
 // hire dates, ramp weeks and Tom's -100 goalAdjustment live in the dashboard's
 // BrokerProfile table, not in a hardcoded mirror here.
-
-function weekPaceFactor(now: Date): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false,
-  }).formatToParts(now);
-  const weekdayStr = parts.find(p => p.type === 'weekday')!.value;
-  const day = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(weekdayStr);
-  const hour = parseInt(parts.find(p => p.type === 'hour')!.value) + parseInt(parts.find(p => p.type === 'minute')!.value) / 60;
-  if (day === 0) return 0;
-  if (day === 6) return 1;
-  const dayIndex = day - 1;
-  const dayProgress = Math.min(Math.max((hour - 8) / 10, 0), 1);
-  return Math.min((dayIndex + dayProgress) / 5, 1);
-}
 
 export async function GET(request: NextRequest) {
   const { session, response } = await requireSession();
@@ -89,8 +63,10 @@ export async function GET(request: NextRequest) {
       for (const load of allLoads) {
         if (!isRealLoad(load)) continue;
         if (!load.profWeek && EXCLUDED_STATUSES.includes((load.status || "").toLowerCase())) continue;
-        const periodKey = load.profWeek || getMondayOf(new Date(load.pickupDate)).toISOString().slice(0, 10);
-        if (periodKey < range.from || periodKey >= range.toExclusive) continue;
+        // Month / quarter / year follow the pickup's ET calendar date. Bucketing
+        // by the week's Monday (or by profWeek) pulled Oct 1–4 into September
+        // because that week opened on Sep 28.
+        if (!load.pickupDate || !pickupInRange(load.pickupDate, range.from, range.toExclusive)) continue;
         const { broker, isActive } = resolveActiveBroker(roster, load.salesRep);
         if (!isActive) continue;
         if (!currentByBroker[broker]) currentByBroker[broker] = { loads: 0, revenue: 0, margin: 0 };
@@ -140,33 +116,30 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const thisMonday = getMondayOf(now);
-    const thisMondayKey = thisMonday.toISOString().slice(0, 10);
-
-    // Week offset: 0 = current, -1 = last week, -2 = 2 weeks ago, etc.
-    const targetMonday = new Date(thisMonday);
-    targetMonday.setDate(targetMonday.getDate() + weekOffset * 7);
-    const targetMondayKey = targetMonday.toISOString().slice(0, 10);
+    // Current and target weeks are ET calendar Mondays (Mon 12:00 AM–Sun 11:59 PM).
+    // `utcMidnight` is only for goal/ramp math, which subtracts UTC-midnight hire dates.
+    const thisMondayKey = mondayKeyForInstant(now);
+    const targetMondayKey = mondayKeyForInstant(now, weekOffset);
+    const targetMonday = utcMidnight(targetMondayKey);
     const isCurrentWeek = weekOffset === 0;
 
     const paceFactor = isCurrentWeek ? weekPaceFactor(now) : 1;
 
-    // Fetch all loads with profWeek or recent pickupDate for rolling avg
-    const fourWeeksBeforeTarget = new Date(targetMonday);
-    fourWeeksBeforeTarget.setDate(fourWeeksBeforeTarget.getDate() - 28);
+    // Fetch all loads with profWeek or recent pickupDate for rolling avg.
+    // The lower bound is UTC midnight of that Monday, which is before Monday
+    // 12:00 AM ET, so an early-Monday pickup is not dropped by the SQL filter.
+    // Week membership itself is decided in memory on the ET calendar date.
+    const fourWeeksBeforeKey = addDays(targetMondayKey, -28);
 
     // The 4 completed week-Monday keys before the target week (hire-capped divisor, OATH-60).
     const completedWeekKeys: string[] = [];
     for (let i = 1; i <= 4; i++) {
-      const m = new Date(targetMonday);
-      m.setDate(m.getDate() - i * 7);
-      m.setHours(0, 0, 0, 0);
-      completedWeekKeys.push(m.toISOString().slice(0, 10));
+      completedWeekKeys.push(addDays(targetMondayKey, -i * 7));
     }
 
     const loadsResult = await db.execute({
       sql: `SELECT salesRep, revenue, carrierCost, pickupDate, profWeek, status, lumperRevenue, lumperCost, carrier FROM Load WHERE pickupDate >= ? OR profWeek >= ?`,
-      args: [fourWeeksBeforeTarget.toISOString(), fourWeeksBeforeTarget.toISOString().slice(0, 10)],
+      args: [`${fourWeeksBeforeKey}T00:00:00.000Z`, fourWeeksBeforeKey],
     });
 
     const activeBrokers = getActiveBrokerNames(roster);
@@ -191,9 +164,7 @@ export async function GET(request: NextRequest) {
     // so a tagged load still needs the financial check (matches the command
     // center's belongsToRange, which applies it before the profWeek branch).
     const profWeekLoads = allLoads.filter((l) => l.profWeek === targetMondayKey && isRealLoad(l));
-    const targetSunday = new Date(targetMonday);
-    targetSunday.setDate(targetSunday.getDate() + 6);
-    targetSunday.setHours(23, 59, 59, 999);
+    const targetWeekEndExclusive = addDays(targetMondayKey, 7);
 
     const targetWeekLoads = profWeekLoads.length > 0
       ? profWeekLoads
@@ -201,8 +172,8 @@ export async function GET(request: NextRequest) {
           if (l.profWeek) return false; // skip loads tagged for other weeks
           if (!isRealLoad(l)) return false; // no real financials (see isRealLoad)
           if (EXCLUDED_STATUSES.includes((l.status || "").toLowerCase())) return false; // dispatched+ only
-          const pd = new Date(l.pickupDate);
-          return pd >= targetMonday && pd <= targetSunday;
+          if (!l.pickupDate) return false;
+          return pickupInRange(l.pickupDate, targetMondayKey, targetWeekEndExclusive);
         });
 
     // Prior weeks for rolling avg (4 weeks before target week)
@@ -214,14 +185,14 @@ export async function GET(request: NextRequest) {
     const priorWeeksLoads = allLoads.filter((l) => {
       // Always exclude loads with no real financials (see isRealLoad)
       if (!isRealLoad(l)) return false;
-      if (l.profWeek && l.profWeek < targetMondayKey && l.profWeek >= fourWeeksBeforeTarget.toISOString().slice(0, 10)) return true;
+      if (l.profWeek && l.profWeek < targetMondayKey && l.profWeek >= fourWeeksBeforeKey) return true;
       if (!l.profWeek) {
         // No profWeek — apply status filter (profWeek loads already passed Tai's status filter)
         if (EXCLUDED_STATUSES.includes((l.status || "").toLowerCase())) return false;
-        const pd = new Date(l.pickupDate);
-        const weekKey = getMondayOf(pd).toISOString().slice(0, 10);
+        if (!l.pickupDate) return false;
+        const weekKey = weekKeyOfPickup(l.pickupDate);
         if (weekKey >= targetMondayKey) return false;
-        if (weekKey < fourWeeksBeforeTarget.toISOString().slice(0, 10)) return false;
+        if (weekKey < fourWeeksBeforeKey) return false;
         if (weeksWithProfData.has(weekKey)) return false;
         return true;
       }
@@ -233,7 +204,7 @@ export async function GET(request: NextRequest) {
     for (const l of priorWeeksLoads) {
       const { broker, isActive } = resolveActiveBroker(roster, l.salesRep);
       if (!isActive) continue;
-      const weekMon = l.profWeek || getMondayOf(new Date(l.pickupDate)).toISOString().slice(0, 10);
+      const weekMon = l.profWeek || weekKeyOfPickup(l.pickupDate);
       if (!weeklyByBroker[broker]) weeklyByBroker[broker] = {};
       if (!weeklyByBroker[broker][weekMon]) weeklyByBroker[broker][weekMon] = { loads: 0, margin: 0 };
       weeklyByBroker[broker][weekMon].loads += 1;
@@ -271,7 +242,9 @@ export async function GET(request: NextRequest) {
       if (profWeek) wk = profWeek;
       else {
         if (EXCLUDED_STATUSES.includes(((r[5] as string) || "").toLowerCase())) continue;
-        wk = getMondayOf(new Date(r[3] as string)).toISOString().slice(0, 10);
+        const pickup = r[3] as string | null;
+        if (!pickup) continue;
+        wk = weekKeyOfPickup(pickup);
         if (recProfWeeks.has(wk)) continue; // profWeek is source of truth
       }
       if (!recByBroker[broker]) recByBroker[broker] = {};
@@ -298,8 +271,9 @@ export async function GET(request: NextRequest) {
       const brokerWeeks = Object.values(weeklyByBroker[broker] || {});
       const totalMargin = brokerWeeks.reduce((s, w) => s + w.margin, 0);
       const totalLoads = brokerWeeks.reduce((s, w) => s + w.loads, 0);
-      // hireDate is already a YYYY-MM-DD calendar date; compare directly (no
-      // getMondayOf, which would shift it into the prior ET week).
+      // hireDate is already a YYYY-MM-DD calendar date; compare it to the
+      // Sunday that closes each completed week. Shifting the hire date itself
+      // back to a Monday would drop the hire week.
       const hireStr = roster.byName.get(broker)?.hireDate ?? null;
       let eligibleWeeks = 4;
       if (hireStr) {
@@ -319,14 +293,11 @@ export async function GET(request: NextRequest) {
       const ramp = getRampStatus(roster, broker, targetMonday);
       const rampWeeksLeft = ramp.ramping ? ramp.rampWeeks - ramp.weeksIn : 0;
       // The goal turns on the Monday `rampWeeksLeft` weeks after this one (each
-      // Monday advances totalWeeks by 1). Formatted like targetMondayKey/weekStart
-      // (toISOString slice) so it lines up with the rest of the route's date keys.
+      // Monday advances totalWeeks by 1). Same YYYY-MM-DD key as weekStart.
       // Brokers always start Mondays.
       let goalStartDate: string | null = null;
       if (ramp.ramping) {
-        const gs = new Date(targetMonday);
-        gs.setDate(gs.getDate() + rampWeeksLeft * 7);
-        goalStartDate = gs.toISOString().slice(0, 10);
+        goalStartDate = addDays(targetMondayKey, rampWeeksLeft * 7);
       }
 
       return {
